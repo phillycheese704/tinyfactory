@@ -59,7 +59,8 @@
     .machine-icon.turbine .rotor { animation: spin 1.1s linear infinite; transform-origin: 32px 28px; }
     .machine-icon.turbine.off .rotor { animation-play-state: paused; opacity: .5; }
     .machine-icon.wire .wire-energy { animation: roll .65s linear infinite; }
-    .machine-icon.wire:not(.powered) .wire-energy { opacity: .25; animation-play-state: paused; }
+    .machine-icon.wire:not(.powered) .wire-energy { opacity: .22; animation-play-state: paused; }
+    .grid-cell .machine-icon.wire { width: 100%; height: 100%; }
     .machine-icon.dropper.powered .power-indicator { opacity: 1; }
     .power-indicator { opacity: 0; }
     .machine-icon.is-pulsing { filter: drop-shadow(0 0 3px #ffca51); }
@@ -268,6 +269,9 @@
     let deleteActive = false;
     let dragging = null;
     let toastTimer;
+    // Automatic wire topology is recalculated only when a machine is placed, removed or rotated.
+    let wireLayoutsDirty = true;
+    const wirePorts = new Map();
 
     // Use every available row and column of square tiles, while respecting the
     // actual header, money display, hotbar labels and iPad Safari safe area.
@@ -340,20 +344,136 @@
         <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
         <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
       if (type === 'Wire') {
-        // Blue socket is IN; red socket is OUT. Direction points toward red.
-        // The unrotated drawing faces right (direction 1).
-        const angle = ((direction + 3) % 4) * 90;
-        return frame(`<rect x="9" y="12" width="46" height="32" rx="9" fill="#fff4cf" stroke="#68582e" stroke-width="2"/>
-          <g transform="rotate(${angle} 32 28)">
-            <path d="M8 28H56" fill="none" stroke="#71675a" stroke-width="10" stroke-linecap="round"/>
-            <path class="wire-energy" d="M13 28H51" fill="none" stroke="#ffdc59" stroke-width="4" stroke-dasharray="6 9" stroke-linecap="round"/>
-            <rect x="2" y="20" width="15" height="16" rx="5" fill="#48b8ff" stroke="#15548a" stroke-width="2.5"/>
-            <rect x="47" y="20" width="15" height="16" rx="5" fill="#ff6464" stroke="#963333" stroke-width="2.5"/>
-            <path d="M26 19l-5 11h9l-3 9 15-17h-9l4-7z" fill="#ffdd54" stroke="#785e23" stroke-width="1.6" stroke-linejoin="round"/>
-            <path d="M39 24l4 4-4 4" fill="none" stroke="#99422b" stroke-width="2.2" stroke-linecap="round"/>
-          </g>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+        // Connection drawing follows the actual blue-input/red-output route.
+        // Both sockets sit at tile edges; a rounded curve joins perpendicular sides.
+        const input = incoming == null ? (direction + 2) % 4 : incoming;
+        const point = d => [[32,0],[64,28],[32,56],[0,28]][d];
+        const a = point(input), b = point(direction);
+        const path = input === (direction + 2) % 4
+          ? `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`
+          : `M${a[0]} ${a[1]} Q32 28 ${b[0]} ${b[1]}`;
+        const socket = (dir,fill,border) =>
+          `<g transform="rotate(${dir*90} 32 28)"><rect x="23" y="-1" width="18" height="11" rx="4" fill="${fill}" stroke="${border}" stroke-width="2.6"/></g>`;
+        return frame(`<rect x="9" y="10" width="46" height="36" rx="11" fill="#fff4cf" stroke="#68582e" stroke-width="2"/>
+          <path d="${path}" fill="none" stroke="#71675a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="${path}" fill="none" stroke="#ead99b" stroke-width="7" stroke-linecap="round"/>
+          <path class="wire-energy" d="${path}" fill="none" stroke="#ffdc59" stroke-width="3.8" stroke-dasharray="6 9" stroke-linecap="round"/>
+          ${socket(input,'#48b8ff','#15548a')}
+          ${socket(direction,'#ff6464','#963333')}
+          <circle cx="32" cy="28" r="7" fill="#fff4c0" stroke="#71675a" stroke-width="1.5"/>
+          <path d="M34 17l-8 13h7l-4 11 13-18h-8z" fill="#ffcf45" stroke="#785e23" stroke-width="1.3" stroke-linejoin="round"/>
+        `, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
       }
       return '';
+    }
+
+    // Wires are two-ended paths, not 4-way junctions. Find a continuous route
+    // through each neighbouring wire group, giving priority to turbine -> dropper.
+    // Building in any order works, and both power flow and artwork use these ports.
+    function rebuildWireLayouts() {
+      if(!wireLayoutsDirty)return;
+      wireLayoutsDirty=false;
+      wirePorts.clear();
+      const unused=new Set([...placed].filter(([,m])=>m.type==='Wire').map(([key])=>key));
+      const edgeDirection=(from,to)=>{
+        const [r,c]=coords(from),[rr,cc]=coords(to);
+        return directions.findIndex(([dr,dc])=>r+dr===rr && c+dc===cc);
+      };
+      const adjacentWires=(key,allowed)=> {
+        const result=[];
+        for(let dir=0;dir<4;dir++) {
+          const next=neighbor(key,dir);
+          if(next && allowed.has(next))result.push(next);
+        }
+        return result;
+      };
+      // BFS returns the shortest sequence of wire keys between two tiles.
+      function findPath(start,end,allowed) {
+        if(start===end)return [start];
+        const queue=[start],previous=new Map([[start,null]]);
+        for(let i=0;i<queue.length;i++) {
+          for(const next of adjacentWires(queue[i],allowed)) {
+            if(previous.has(next))continue;
+            previous.set(next,queue[i]);
+            if(next===end) {
+              const path=[];let at=next;
+              while(at!==null){path.push(at);at=previous.get(at);}
+              return path.reverse();
+            }
+            queue.push(next);
+          }
+        }
+        return null;
+      }
+      while(unused.size) {
+        const seed=unused.values().next().value;
+        const component=new Set([seed]),queue=[seed];
+        for(let i=0;i<queue.length;i++) {
+          for(const next of adjacentWires(queue[i],unused)) {
+            if(!component.has(next)){component.add(next);queue.push(next);}
+          }
+        }
+        const sources=[],sinks=[];
+        for(const key of component) {
+          for(let d=0;d<4;d++) {
+            const nearby=neighbor(key,d),type=nearby && placed.get(nearby)?.type;
+            if(type==='Turbine')sources.push({wire:key,machine:nearby});
+            if(type==='Dropper')sinks.push({wire:key,machine:nearby});
+          }
+        }
+        let fullPath=null;
+        if(sources.length && sinks.length) {
+          // Prefer a completed, shortest route from a turbine to a dropper.
+          for(const source of sources)for(const sink of sinks) {
+            const path=findPath(source.wire,sink.wire,component);
+            if(path && (!fullPath || path.length<fullPath.length-2))
+              fullPath=[source.machine,...path,sink.machine];
+          }
+        }
+        if(!fullPath && sources.length) {
+          // If not finished yet, keep the path from the turbine connected as it grows.
+          const source=sources[0];let longest=[source.wire];
+          for(const end of component) {
+            const path=findPath(source.wire,end,component);
+            if(path && path.length>longest.length)longest=path;
+          }
+          fullPath=[source.machine,...longest];
+        }
+        if(!fullPath && sinks.length) {
+          const sink=sinks[0];let longest=[sink.wire];
+          for(const start of component) {
+            const path=findPath(start,sink.wire,component);
+            if(path && path.length>longest.length)longest=path;
+          }
+          fullPath=[...longest,sink.machine];
+        }
+        if(!fullPath) {
+          // Unpowered loose wires also curve to join their neighbours.
+          const ends=[...component].filter(k=>adjacentWires(k,component).length<=1);
+          const start=(ends[0]||seed);
+          let longest=[start];
+          for(const end of component) {
+            const path=findPath(start,end,component);
+            if(path && path.length>longest.length)longest=path;
+          }
+          const preference=path=>path.reduce((score,key,i)=>{
+            const obj=placed.get(key),next=path[i+1];
+            return score+(next && edgeDirection(key,next)===obj.direction?1:0);
+          },0);
+          fullPath=preference(longest.slice().reverse())>preference(longest)?longest.reverse():longest;
+        }
+        for(let i=0;i<fullPath.length;i++) {
+          const key=fullPath[i],obj=placed.get(key);
+          if(obj?.type!=='Wire')continue;
+          const previous=fullPath[i-1],next=fullPath[i+1];
+          const towardsPrevious=previous?edgeDirection(key,previous):null;
+          const towardsNext=next?edgeDirection(key,next):null;
+          const outputDir=towardsNext??(towardsPrevious!=null?(towardsPrevious+2)%4:obj.direction);
+          const inputDir=towardsPrevious??(outputDir+2)%4;
+          wirePorts.set(key,{inputDir,outputDir});
+          unused.delete(key);
+        }
+      }
     }
     function incomingFor(key, direction) {
       // Look for machines that naturally feed into this conveyor.
@@ -433,26 +553,30 @@
       renderGrid();renderBlobs();
     }
     function renderGrid() {
+      rebuildWireLayouts();
       const now=performance.now();
       $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
         const key=cellKey(index), obj=placed.get(key);
         const powered=!!obj && (obj.poweredUntil>now || obj.wireUntil>now);
-        const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : null;
-        const signature=obj ? [obj.type,obj.direction,obj.enabled,incoming,powered].join('|') : '';
+        const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
+        const output=ports?.outputDir??obj?.direction;
+        const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
+        const signature=obj ? [obj.type,obj.direction,obj.enabled,output,incoming,powered].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,obj.direction,powered,obj.enabled,incoming):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
         cell.classList.toggle('is-powered',powered);
-        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][(obj.direction+2)%4]+', red output '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
-        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Wire'?'Tap to rotate wire 90° — blue input, red output':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
+        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
+        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Wire'?'Auto-connects around corners; tap to change preferred direction':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
       if (placed.has(key) || !type) return;
       placed.set(key,machine(type));
+      wireLayoutsDirty=true;
       inventory.hotbar[hotbarIndex]=null;
       selectedHotbar=null;deleteActive=false;
       renderGrid();renderInventory();
@@ -462,6 +586,7 @@
       const key=cellKey(index), obj=placed.get(key),now=performance.now();
       if(deleteActive) {
         if(placed.delete(key)) {
+          wireLayoutsDirty=true;
           for(const [id,blob] of blobs) if(blob.key===key) blobs.delete(id);
           renderGrid();renderBlobs();
         }
@@ -469,6 +594,7 @@
         placeFromHotbar(index,selectedHotbar);
       } else if (obj?.type==='Conveyor' || obj?.type==='Wire') {
         obj.direction=(obj.direction+1)%4;
+        wireLayoutsDirty=true;
         renderGrid();
       } else if (obj?.type==='Dropper') {
         if(now-obj.lastClick >= 500) {
@@ -701,26 +827,26 @@
       }
       renderBlobs();
     }
-    // Power flows from a turbine into a BLUE socket, out of the RED socket,
-    // and into the next BLUE socket (or a dropper). No side or red-to-red links.
-    // Each turbine creates one 3-second charge every 2.5 seconds.
+    // Blue receives from a turbine or the previous wire's red end; red
+    // forwards to the next wire's blue end or a dropper, including 90° bends.
     function deliverPower(sourceKey,now) {
+      rebuildWireLayouts();
       const queue=[],visited=new Set(),targets=[];
       for(let dir=0;dir<4;dir++) {
         const key=neighbor(sourceKey,dir),obj=key&&placed.get(key);
-        // First wire's blue socket must point back at the turbine.
-        if(obj?.type==='Wire' && obj.direction===dir)queue.push({key,path:[key]});
+        const ports=key&&wirePorts.get(key);
+        if(obj?.type==='Wire' && ports?.inputDir===(dir+2)%4)
+          queue.push({key,path:[key]});
       }
       while(queue.length) {
         const current=queue.shift(),{key,path}=current;
         if(visited.has(key))continue;
-        const wire=placed.get(key);
-        if(wire?.type!=='Wire')continue;
+        const wire=placed.get(key),ports=wirePorts.get(key);
+        if(wire?.type!=='Wire' || !ports)continue;
         visited.add(key);
-        const next=neighbor(key,wire.direction),obj=next&&placed.get(next);
-        if(obj?.type==='Dropper') targets.push({key:next,path});
-        // The next wire's blue input must face this wire's red output.
-        if(obj?.type==='Wire' && obj.direction===wire.direction && !visited.has(next))
+        const next=neighbor(key,ports.outputDir),obj=next&&placed.get(next);
+        if(obj?.type==='Dropper')targets.push({key:next,path});
+        if(obj?.type==='Wire' && wirePorts.get(next)?.inputDir===(ports.outputDir+2)%4 && !visited.has(next))
           queue.push({key:next,path:[...path,next]});
       }
       if(!targets.length)return;
