@@ -234,7 +234,7 @@
     const $ = id => document.getElementById(id);
     const HOTBAR_SIZE = 9;
     const BACKPACK_SIZE = 36;
-    const MIN_GRID_SIDE = 16;
+    const MIN_GRID_SIDE = 14;
     // Stable row/column positions survive viewport and iPad orientation changes.
     const placed = new Map(); // "row,column" -> { type, direction, enabled, clocks }
     const blobs = new Map(); // Each moving black dot has a unique ID.
@@ -329,7 +329,7 @@
           <rect x="8" y="8" width="48" height="40" rx="11" fill="#f5fff8" stroke="#6d9381" stroke-width="1.6"/>
           <path d="${path}" fill="none" stroke="#577b67" stroke-width="14" stroke-linecap="round"/>
           <path d="${path}" class="belt-stripes" fill="none" stroke="#f8e9a1" stroke-width="8" stroke-dasharray="9 9" stroke-linecap="round"/>
-          <g transform="rotate(${angle} 32 28)"><path d="M32 11v17m-7-7 7 7 7-7" fill="none" ${stroke}/></g>
+          <g transform="rotate(${angle} 32 28)"><path d="M32 43V17m-7 7 7-7 7 7" fill="none" ${stroke}/></g>
           <circle cx="9" cy="11" r="2" fill="#2c5744"/><circle cx="55" cy="45" r="2" fill="#2c5744"/>`, `${pulsing?'is-pulsing':''}`);
       }
       if (type === 'Extractor') return frame(`<rect x="9" y="12" width="46" height="35" rx="8" fill="#d9c4ff" ${stroke}/>
@@ -339,10 +339,20 @@
       if (type === 'Turbine') return frame(`<path d="M9 11h46v37H9z" fill="#c8f2ff" ${stroke}/><rect x="13" y="15" width="38" height="29" rx="7" fill="#f7fdff" stroke="#7baab9" stroke-width="2"/>
         <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
         <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
-      if (type === 'Wire') return frame(`<rect x="7" y="11" width="50" height="34" rx="8" fill="#fff2b9" stroke="#68582e" stroke-width="2"/>
-        <path d="M0 28H64M32 0V56" fill="none" stroke="#8e835c" stroke-width="10" stroke-linecap="round"/>
-        <path class="wire-energy" d="M0 28H64M32 0V56" fill="none" stroke="#ffcf47" stroke-width="4" stroke-dasharray="7 11" stroke-linecap="round"/>
-        <circle cx="32" cy="28" r="7" fill="#fff8cd" ${stroke}/><path d="M33 18l-6 11h6l-4 9 9-13h-6z" fill="#ffcb3f" stroke="#8b6c26" stroke-width="1.5"/>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+      if (type === 'Wire') {
+        // Blue socket is IN; red socket is OUT. Direction points toward red.
+        // The unrotated drawing faces right (direction 1).
+        const angle = ((direction + 3) % 4) * 90;
+        return frame(`<rect x="9" y="12" width="46" height="32" rx="9" fill="#fff4cf" stroke="#68582e" stroke-width="2"/>
+          <g transform="rotate(${angle} 32 28)">
+            <path d="M8 28H56" fill="none" stroke="#71675a" stroke-width="10" stroke-linecap="round"/>
+            <path class="wire-energy" d="M13 28H51" fill="none" stroke="#ffdc59" stroke-width="4" stroke-dasharray="6 9" stroke-linecap="round"/>
+            <rect x="2" y="20" width="15" height="16" rx="5" fill="#48b8ff" stroke="#15548a" stroke-width="2.5"/>
+            <rect x="47" y="20" width="15" height="16" rx="5" fill="#ff6464" stroke="#963333" stroke-width="2.5"/>
+            <path d="M26 19l-5 11h9l-3 9 15-17h-9l4-7z" fill="#ffdd54" stroke="#785e23" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M39 24l4 4-4 4" fill="none" stroke="#99422b" stroke-width="2.2" stroke-linecap="round"/>
+          </g>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+      }
       return '';
     }
     function incomingFor(key, direction) {
@@ -435,8 +445,8 @@
         }
         cell.classList.toggle('occupied',!!obj);
         cell.classList.toggle('is-powered',powered);
-        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
-        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
+        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][(obj.direction+2)%4]+', red output '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
+        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Wire'?'Tap to rotate wire 90° — blue input, red output':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
@@ -457,7 +467,7 @@
         }
       } else if(selectedHotbar!==null) {
         placeFromHotbar(index,selectedHotbar);
-      } else if (obj?.type==='Conveyor') {
+      } else if (obj?.type==='Conveyor' || obj?.type==='Wire') {
         obj.direction=(obj.direction+1)%4;
         renderGrid();
       } else if (obj?.type==='Dropper') {
@@ -691,29 +701,34 @@
       }
       renderBlobs();
     }
-    // Power moves only along orthogonally-adjacent wire segments.
+    // Power flows from a turbine into a BLUE socket, out of the RED socket,
+    // and into the next BLUE socket (or a dropper). No side or red-to-red links.
     // Each turbine creates one 3-second charge every 2.5 seconds.
     function deliverPower(sourceKey,now) {
-      const queue=[],visited=new Set(),targets=new Set();
-      for(let d=0;d<4;d++) {
-        const key=neighbor(sourceKey,d);
-        if(key && placed.get(key)?.type==='Wire')queue.push(key);
+      const queue=[],visited=new Set(),targets=[];
+      for(let dir=0;dir<4;dir++) {
+        const key=neighbor(sourceKey,dir),obj=key&&placed.get(key);
+        // First wire's blue socket must point back at the turbine.
+        if(obj?.type==='Wire' && obj.direction===dir)queue.push({key,path:[key]});
       }
       while(queue.length) {
-        const key=queue.shift();if(visited.has(key))continue;
+        const current=queue.shift(),{key,path}=current;
+        if(visited.has(key))continue;
+        const wire=placed.get(key);
+        if(wire?.type!=='Wire')continue;
         visited.add(key);
-        for(let d=0;d<4;d++) {
-          const next=neighbor(key,d),obj=next&&placed.get(next);
-          if(obj?.type==='Wire' && !visited.has(next))queue.push(next);
-          if(obj?.type==='Dropper')targets.add(next);
-        }
+        const next=neighbor(key,wire.direction),obj=next&&placed.get(next);
+        if(obj?.type==='Dropper') targets.push({key:next,path});
+        // The next wire's blue input must face this wire's red output.
+        if(obj?.type==='Wire' && obj.direction===wire.direction && !visited.has(next))
+          queue.push({key:next,path:[...path,next]});
       }
-      if(!targets.size)return;
-      const chosen=[...targets].sort((a,b)=>placed.get(a).poweredUntil-placed.get(b).poweredUntil)[0];
-      const dropper=placed.get(chosen);
+      if(!targets.length)return;
+      const chosen=targets.sort((a,b)=>placed.get(a.key).poweredUntil-placed.get(b.key).poweredUntil)[0];
+      const dropper=placed.get(chosen.key);
       dropper.poweredUntil=now+3000;
       dropper.pulseUntil=now+250;
-      for(const key of visited)placed.get(key).wireUntil=now+3000;
+      for(const key of chosen.path)placed.get(key).wireUntil=now+3000;
     }
     function tickFactory() {
       const now=performance.now();let mustRender=false;
