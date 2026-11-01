@@ -250,9 +250,9 @@
       const nextRow = row+dr, nextCol = col+dc;
       return nextRow < 0 || nextCol < 0 || nextRow >= gridRows || nextCol >= gridCols ? null : toKey(nextRow,nextCol);
     }
-    function machine(type) {
+    function machine(type, purchaseCost = 0n) {
       const now = performance.now();
-      return { type, direction:1, enabled:true, lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
+      return { type, purchaseCost, direction:1, enabled:true, lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
     }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
@@ -262,6 +262,15 @@
       hotbar: Array(HOTBAR_SIZE).fill(null),
       backpack: Array(BACKPACK_SIZE).fill(null)
     };
+    // Store each item's checkout price, even when moved between the bag and hotbar.
+    const inventoryCosts = {
+      hotbar: Array(HOTBAR_SIZE).fill(0n),
+      backpack: Array(BACKPACK_SIZE).fill(0n)
+    };
+    function resaleValue(purchaseCost) {
+      // Refund 65% of the amount paid, rounding DOWN to a $10 increment.
+      return (purchaseCost * 65n / 100n / 10n) * 10n;
+    }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
     const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 50n, Wire: 50n };
     let selected = null; // Inventory source, used while the backpack is open.
@@ -575,9 +584,10 @@
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
       if (placed.has(key) || !type) return;
-      placed.set(key,machine(type));
+      placed.set(key,machine(type, inventoryCosts.hotbar[hotbarIndex]));
       wireLayoutsDirty=true;
       inventory.hotbar[hotbarIndex]=null;
+      inventoryCosts.hotbar[hotbarIndex]=0n;
       selectedHotbar=null;deleteActive=false;
       renderGrid();renderInventory();
     }
@@ -585,7 +595,11 @@
       if($('shopLayer').classList.contains('is-open') || $('backpackLayer').classList.contains('is-open')) return;
       const key=cellKey(index), obj=placed.get(key),now=performance.now();
       if(deleteActive) {
-        if(placed.delete(key)) {
+        if(obj && placed.delete(key)) {
+          const refund = resaleValue(obj.purchaseCost ?? 0n);
+          money += refund;
+          updateMoney();
+          showToast('Refunded $' + formatAmount(refund));
           wireLayoutsDirty=true;
           for(const [id,blob] of blobs) if(blob.key===key) blobs.delete(id);
           renderGrid();renderBlobs();
@@ -642,6 +656,7 @@
       if(money<price) {showToast('Not enough money');return;}
       money-=price;
       inventory[location.zone][location.index]=item;
+      inventoryCosts[location.zone][location.index]=price;
       if(item==='Dropper') prices[item]=price===0n?1n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
       if(item==='Conveyor') prices[item]=price===0n?50n:price>=250n?250n:price+50n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
@@ -661,8 +676,11 @@
     function moveOrSwap(from, to) {
       if (!from || !to || sameLocation(from, to) || !inventory[from.zone][from.index]) return;
       const oldDestination = inventory[to.zone][to.index];
+      const oldDestinationCost = inventoryCosts[to.zone][to.index];
       inventory[to.zone][to.index] = inventory[from.zone][from.index];
+      inventoryCosts[to.zone][to.index] = inventoryCosts[from.zone][from.index];
       inventory[from.zone][from.index] = oldDestination;
+      inventoryCosts[from.zone][from.index] = oldDestinationCost;
       selected = null;
       renderInventory();
     }
