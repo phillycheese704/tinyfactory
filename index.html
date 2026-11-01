@@ -211,7 +211,7 @@
         </button>
         <button type="button" class="item" id="buyWire">
           <span class="item-art wire"></span>
-          <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">FREE</span></span>
+          <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$50</span></span>
         </button>
       </div>
     </section>
@@ -262,7 +262,7 @@
       backpack: Array(BACKPACK_SIZE).fill(null)
     };
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 750n, Wire: 0n };
+    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 750n, Wire: 50n };
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
@@ -507,7 +507,7 @@
       money-=price;
       inventory[location.zone][location.index]=item;
       if(item==='Dropper') prices[item]=price===0n?1n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
-      if(item==='Conveyor') prices[item]=50n;
+      if(item==='Conveyor') prices[item]=price===0n?50n:price>=250n?250n:price+50n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
         // 1.25x, rounded upward to the next multiple of five.
