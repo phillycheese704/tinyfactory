@@ -47,7 +47,40 @@
     .item-art { width: 70px; height: 65px; border: 2px dashed #a8a8a8; border-radius: 11px 13px 10px 12px; background: #dff1ff; display: grid; place-items: center; }
     .item-art.conveyor { background: #e1f5e8; }
     .item-art.extractor { background: #f3e5fc; }
+    .item-art.turbine { background: #d7f6ff; }
+    .item-art.wire { background: #fff3c7; }
     .item-art svg { width: 58px; height: 53px; }
+    .machine-icon { width: 90%; height: 90%; overflow: visible; pointer-events: none; }
+    .machine-icon.dropper .plunger { animation: plunge 1.6s ease-in-out infinite; transform-origin: 32px 22px; }
+    .machine-icon.dropper .drip { animation: drip 1.6s ease-in infinite; }
+    .machine-icon.conveyor .belt-stripes { animation: roll .62s linear infinite; }
+    .machine-icon.extractor .press { animation: press 1.6s ease-in-out infinite; }
+    .machine-icon.extractor .coin { animation: coin 1.6s ease-in-out infinite; transform-origin: 46px 14px; }
+    .machine-icon.turbine .rotor { animation: spin 1.1s linear infinite; transform-origin: 32px 28px; }
+    .machine-icon.turbine.off .rotor { animation-play-state: paused; opacity: .5; }
+    .machine-icon.wire .wire-energy { animation: roll .65s linear infinite; }
+    .machine-icon.wire:not(.powered) .wire-energy { opacity: .25; animation-play-state: paused; }
+    .machine-icon.dropper.powered .power-indicator { opacity: 1; }
+    .power-indicator { opacity: 0; }
+    .machine-icon.is-pulsing { filter: drop-shadow(0 0 3px #ffca51); }
+    .grid-cell .machine-icon { width: 98%; height: 98%; }
+    @keyframes plunge { 0%,45%,100% { transform: translateY(-2px); } 55%,70% { transform: translateY(4px); } }
+    @keyframes drip { 0%,42% { opacity:0;transform:translateY(0); } 48% {opacity:1;} 85%,100% {opacity:0;transform:translateY(10px);} }
+    @keyframes roll { to { stroke-dashoffset: -18; } }
+    @keyframes press { 0%,35%,100% {transform:translateY(-2px)} 50%,70% {transform:translateY(4px)} }
+    @keyframes coin { 0%,38% {transform:scale(.7);opacity:.2} 64% {transform:scale(1.1);opacity:1} 100% {transform:scale(.7);opacity:.2} }
+    @keyframes spin { to {transform:rotate(360deg)} }
+    @keyframes glow {50% { opacity:.6;transform:scale(1.12)} }
+    .blob-layer { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:visible; }
+    .blob { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; justify-content:center; width:24px;height:24px; transition:left .36s linear,top .36s linear; will-change:left,top; }
+    .blob-dot { width:clamp(7px, .9vw, 13px);height:clamp(7px, .9vw, 13px);background:#202020;border-radius:48% 53% 50% 45%;border:1px solid #000;box-shadow:1px 2px 0 #858585;animation:glow 1.1s ease-in-out infinite; }
+    .blob-worth { position:absolute;bottom:calc(50% + 6px);left:50%;transform:translateX(-50%);color:#147b3d;font-size:clamp(8px,.76vw,11px);font-weight:900;text-shadow:-1px -1px white,1px 1px white,-1px 1px white,1px -1px white;white-space:nowrap; }
+    .blob.collecting { opacity:.35;transition:left .36s linear,top .36s linear,opacity .36s linear; }
+    body:not(.has-place-tool):not(.dragging-to-grid):not(.delete-active) .grid-cell:not(.occupied) { pointer-events:none; }
+    .grid-cell.occupied { pointer-events:auto; }
+    .grid-cell.occupied.is-powered { box-shadow:inset 0 0 0 1px #ffd34e,0 0 6px #ffe08b; }
+    .grid-cell.occupied.is-powered::after { content:'⚡';position:absolute;right:0;top:0;font-size:clamp(8px,.8vw,12px);line-height:1;pointer-events:none; }
+    .grid-cell { position:relative; }
     .item-bottom { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; align-items: center; width: 100%; margin-top: auto; padding-top: 17px; }
     .item-name { font-size: 20px; font-weight: 900; letter-spacing: -.5px; }
     .price { font-size: 15px; font-weight: 900; background: #fff2c3; padding: 6px 10px; border: 2px solid var(--ink); border-radius: 10px 8px 11px 9px; white-space: nowrap; }
@@ -80,7 +113,7 @@
     .drag-ghost svg { width: 80%; height: 80%; }
     /* The board uses the whole safe rectangle, not a letterboxed 16x16 square.
        The number of square tiles adapts to the device, keeping installed machines visible. */
-    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: hidden; pointer-events: none; }
+    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; }
     body.has-place-tool .factory-grid, body.dragging-to-grid .factory-grid { background: #fefefe; border-color: #797979; box-shadow: 3px 3px 0 #d8d8d8; pointer-events: auto; }
     body.delete-active .factory-grid { pointer-events: auto; }
     .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: manipulation; }
@@ -88,7 +121,7 @@
     body.has-place-tool .grid-cell.end-col, body.dragging-to-grid .grid-cell.end-col { border-right: 0; }
     body.has-place-tool .grid-cell.end-row, body.dragging-to-grid .grid-cell.end-row { border-bottom: 0; }
     .grid-cell:focus-visible { outline: 2px solid #1b7eb8; outline-offset: -2px; }
-    .grid-cell.occupied { background: #fff3d7; border-radius: 4px; box-shadow: inset 0 0 0 1px #e6d7af; }
+    .grid-cell.occupied { background: #fff9e8; border-radius: 4px; box-shadow: inset 0 0 0 1px #e6d7af; }
     .grid-cell .slot-icon { width: 94%; height: 94%; }
     body.has-place-tool .grid-cell:not(.occupied):hover, body.dragging-to-grid .grid-cell:not(.occupied):hover, .grid-cell.place-over { background: #def6e5; box-shadow: inset 0 0 0 2px #3b9460; }
     body.delete-active .grid-cell.occupied:hover { background: #ffdede; box-shadow: inset 0 0 0 2px #d84141; }
@@ -172,6 +205,14 @@
           <span class="item-art extractor"><svg viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-extractor"/></svg></span>
           <span class="item-bottom"><span class="item-name">Extractor</span><span class="price" id="extractorPrice">FREE</span></span>
         </button>
+        <button type="button" class="item" id="buyTurbine">
+          <span class="item-art turbine"></span>
+          <span class="item-bottom"><span class="item-name">Turbine</span><span class="price" id="turbinePrice">$750</span></span>
+        </button>
+        <button type="button" class="item" id="buyWire">
+          <span class="item-art wire"></span>
+          <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">FREE</span></span>
+        </button>
       </div>
     </section>
   </div>
@@ -195,7 +236,23 @@
     const BACKPACK_SIZE = 36;
     const MIN_GRID_SIDE = 16;
     // Stable row/column positions survive viewport and iPad orientation changes.
-    const placed = new Map();
+    const placed = new Map(); // "row,column" -> { type, direction, enabled, clocks }
+    const blobs = new Map(); // Each moving black dot has a unique ID.
+    let nextBlobId = 1;
+    let lastMovementAt = 0;
+    const MOVE_MS = 400;
+    const directions = [[-1,0],[0,1],[1,0],[0,-1]]; // up, right, down, left
+    const toKey = (row, column) => `${row},${column}`;
+    const coords = key => key.split(',').map(Number);
+    function neighbor(key, direction) {
+      const [row,col] = coords(key), [dr,dc] = directions[direction];
+      const nextRow = row+dr, nextCol = col+dc;
+      return nextRow < 0 || nextCol < 0 || nextRow >= gridRows || nextCol >= gridCols ? null : toKey(nextRow,nextCol);
+    }
+    function machine(type) {
+      const now = performance.now();
+      return { type, direction:1, enabled:true, lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
+    }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
     const cellKey = index => `${Math.floor(index / gridCols)},${index % gridCols}`;
@@ -205,7 +262,7 @@
       backpack: Array(BACKPACK_SIZE).fill(null)
     };
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n };
+    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 750n, Wire: 0n };
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
@@ -238,7 +295,7 @@
       grid.style.height = rows * tile + 'px';
       grid.style.left = Math.max(0, Math.floor((window.innerWidth - cols * tile) / 2)) + 'px';
       grid.style.top = top + Math.floor((usableHeight - rows * tile) / 2) + 'px';
-      if (cols !== gridCols || rows !== gridRows || grid.childElementCount !== cols * rows) {
+      if (cols !== gridCols || rows !== gridRows || grid.childElementCount !== cols * rows + 1) {
         gridCols = cols;
         gridRows = rows;
         buildGrid();
@@ -249,7 +306,58 @@
     window.visualViewport?.addEventListener('scroll', fitFactoryGrid);
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitFactoryGrid).observe(document.querySelector('.hotbar-wrap'));
 
-    function iconFor(item) { return `<svg class="slot-icon" viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-${item.toLowerCase()}"></use></svg>`; }
+    // Individual illustrated SVGs keep the animations working in iPad Safari.
+    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false) {
+      if (!type) return '';
+      const stroke = 'stroke="#292929" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"';
+      const frame = (inside, classes='') => `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${inside}</svg>`;
+      if (type === 'Dropper') return frame(`
+        <path d="M12 15L17 8h30l5 7v9H12z" fill="#b6ddff" ${stroke}/>
+        <path d="M22 8V4h20v4M13 25h38M17 25v20h30V25" fill="#e4effa" ${stroke}/>
+        <g class="plunger"><path d="M23 19h18v10H23z" fill="#f0b767" ${stroke}/><path d="M32 29v10m-5 0h10l-5 7z" fill="#687c8f" ${stroke}/></g>
+        <circle class="drip" cx="32" cy="47" r="3.5" fill="#202020"/>
+        <path d="M18 32h5m18 0h5" ${stroke}/><path class="power-indicator" d="M47 5l-5 8h5l-4 8" fill="#ffda49" stroke="#b47704" stroke-width="1.5"/>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+      if (type === 'Conveyor') {
+        // Entry is inferred from the previous neighbouring belt or dropper;
+        // draw a rounded curve automatically when entry and exit differ.
+        const input = incoming == null ? (direction+2)%4 : incoming;
+        const point = dir => [[32,5],[59,28],[32,51],[5,28]][dir];
+        const a=point(input), b=point(direction);
+        const path = input === direction ? `M ${a[0]} ${a[1]} Q 18 28 32 28 T ${b[0]} ${b[1]}` : `M ${a[0]} ${a[1]} Q 32 28 ${b[0]} ${b[1]}`;
+        const angle=direction*90;
+        return frame(`<rect x="3" y="4" width="58" height="48" rx="13" fill="#b8e4cc" ${stroke}/>
+          <rect x="8" y="8" width="48" height="40" rx="11" fill="#f5fff8" stroke="#6d9381" stroke-width="1.6"/>
+          <path d="${path}" fill="none" stroke="#577b67" stroke-width="14" stroke-linecap="round"/>
+          <path d="${path}" class="belt-stripes" fill="none" stroke="#f8e9a1" stroke-width="8" stroke-dasharray="9 9" stroke-linecap="round"/>
+          <g transform="rotate(${angle} 32 28)"><path d="M32 11v17m-7-7 7 7 7-7" fill="none" ${stroke}/></g>
+          <circle cx="9" cy="11" r="2" fill="#2c5744"/><circle cx="55" cy="45" r="2" fill="#2c5744"/>`, `${pulsing?'is-pulsing':''}`);
+      }
+      if (type === 'Extractor') return frame(`<rect x="9" y="12" width="46" height="35" rx="8" fill="#d9c4ff" ${stroke}/>
+        <path d="M16 19h32v19H16z" fill="#fff3ff" ${stroke}/><g class="press"><path d="M19 9h26v12H19z" fill="#8f75c4" ${stroke}/><path d="M25 21l7 7 7-7" fill="#af87cc" ${stroke}/></g>
+        <circle class="coin" cx="46" cy="14" r="7" fill="#ffe177" stroke="#7e5519" stroke-width="2"/>
+        <path d="M24 37h16M20 47v5m24-5v5" ${stroke}/><path d="M32 31l3 4-3 4-3-4z" fill="#414141"/>`,`${pulsing?'is-pulsing':''}`);
+      if (type === 'Turbine') return frame(`<path d="M9 11h46v37H9z" fill="#c8f2ff" ${stroke}/><rect x="13" y="15" width="38" height="29" rx="7" fill="#f7fdff" stroke="#7baab9" stroke-width="2"/>
+        <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
+        <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
+      if (type === 'Wire') return frame(`<rect x="7" y="11" width="50" height="34" rx="8" fill="#fff2b9" stroke="#68582e" stroke-width="2"/>
+        <path d="M0 28H64M32 0V56" fill="none" stroke="#8e835c" stroke-width="10" stroke-linecap="round"/>
+        <path class="wire-energy" d="M0 28H64M32 0V56" fill="none" stroke="#ffcf47" stroke-width="4" stroke-dasharray="7 11" stroke-linecap="round"/>
+        <circle cx="32" cy="28" r="7" fill="#fff8cd" ${stroke}/><path d="M33 18l-6 11h6l-4 9 9-13h-6z" fill="#ffcb3f" stroke="#8b6c26" stroke-width="1.5"/>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+      return '';
+    }
+    function incomingFor(key, direction) {
+      // Look for machines that naturally feed into this conveyor.
+      for(let dir=0;dir<4;dir++) {
+        const near = neighbor(key, dir), prior = near && placed.get(near);
+        if (prior?.type === 'Conveyor' && prior.direction === (dir+2)%4) return dir;
+        if (prior?.type === 'Dropper' && dir === 3) return dir;
+      }
+      return (direction+2)%4;
+    }
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire']) {
+      const shopArt = $('buy'+type).querySelector('.item-art');
+      shopArt.innerHTML = iconFor(type);
+    }
     function formatAmount(value) {
       const units = [[1000000000000000n, 'Qa'], [1000000000000n, 'T'], [1000000000n, 'B'], [1000000n, 'M'], [1000n, 'K']];
       for (const [size, unit] of units) {
@@ -300,40 +408,67 @@
         const cell = document.createElement('button');
         cell.type = 'button';
         cell.className = 'grid-cell';
-        if (index % gridCols === gridCols - 1) cell.classList.add('end-col');
-        if (Math.floor(index / gridCols) === gridRows - 1) cell.classList.add('end-row');
+        if (index % gridCols === gridCols-1) cell.classList.add('end-col');
+        if (Math.floor(index/gridCols) === gridRows-1) cell.classList.add('end-row');
         cell.dataset.cell = index;
         cell.tabIndex = selectedHotbar !== null || deleteActive ? 0 : -1;
         cell.addEventListener('click', () => useGridCell(index));
         fragment.appendChild(cell);
       }
+      // Overlay must be inside the same sized board so moving blobs stay aligned.
+      const overlay = document.createElement('div');
+      overlay.className='blob-layer';overlay.id='blobLayer';
+      fragment.appendChild(overlay);
       $('factoryGrid').replaceChildren(fragment);
-      renderGrid();
+      renderGrid();renderBlobs();
     }
     function renderGrid() {
-      $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell, index) => {
-        const item = placed.get(cellKey(index));
-        cell.innerHTML = item ? iconFor(item) : '';
-        cell.classList.toggle('occupied', !!item);
-        cell.setAttribute('aria-label', `Row ${Math.floor(index / gridCols) + 1}, column ${index % gridCols + 1}: ${item || 'empty'}`);
-        cell.title = item || 'Empty factory tile';
+      const now=performance.now();
+      $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
+        const key=cellKey(index), obj=placed.get(key);
+        const powered=!!obj && (obj.poweredUntil>now || obj.wireUntil>now);
+        const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : null;
+        const signature=obj ? [obj.type,obj.direction,obj.enabled,incoming,powered].join('|') : '';
+        if(cell.dataset.signature!==signature) {
+          cell.innerHTML=obj?iconFor(obj.type,obj.direction,powered,obj.enabled,incoming):'';
+          cell.dataset.signature=signature;
+        }
+        cell.classList.toggle('occupied',!!obj);
+        cell.classList.toggle('is-powered',powered);
+        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
+        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
       });
     }
-    function placeFromHotbar(index, hotbarIndex) {
-      if (placed.has(cellKey(index)) || !inventory.hotbar[hotbarIndex]) return;
-      placed.set(cellKey(index), inventory.hotbar[hotbarIndex]);
-      inventory.hotbar[hotbarIndex] = null;
-      selectedHotbar = null;
-      deleteActive = false;
-      renderGrid();
-      renderInventory();
+    function placeFromHotbar(index,hotbarIndex) {
+      const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
+      if (placed.has(key) || !type) return;
+      placed.set(key,machine(type));
+      inventory.hotbar[hotbarIndex]=null;
+      selectedHotbar=null;deleteActive=false;
+      renderGrid();renderInventory();
     }
     function useGridCell(index) {
-      if ($('shopLayer').classList.contains('is-open') || $('backpackLayer').classList.contains('is-open')) return;
-      if (deleteActive) {
-        if (placed.delete(cellKey(index))) renderGrid();
-      } else if (selectedHotbar !== null) {
-        placeFromHotbar(index, selectedHotbar);
+      if($('shopLayer').classList.contains('is-open') || $('backpackLayer').classList.contains('is-open')) return;
+      const key=cellKey(index), obj=placed.get(key),now=performance.now();
+      if(deleteActive) {
+        if(placed.delete(key)) {
+          for(const [id,blob] of blobs) if(blob.key===key) blobs.delete(id);
+          renderGrid();renderBlobs();
+        }
+      } else if(selectedHotbar!==null) {
+        placeFromHotbar(index,selectedHotbar);
+      } else if (obj?.type==='Conveyor') {
+        obj.direction=(obj.direction+1)%4;
+        renderGrid();
+      } else if (obj?.type==='Dropper') {
+        if(now-obj.lastClick >= 500) {
+          obj.lastClick=now;
+          spawnBlob(key,now);
+        }
+      } else if (obj?.type==='Turbine') {
+        obj.enabled=!obj.enabled;
+        obj.lastPower=now;obj.lastUpkeep=now;
+        renderGrid();
       }
     }
 
@@ -365,20 +500,26 @@
       return null;
     }
     function purchase(item) {
-      const location = nextFreeSlot();
-      if (!location) { showToast('Inventory full'); return; }
-      inventory[location.zone][location.index] = item;
-      const oldPrice = prices[item];
-      if (item === 'Dropper') prices[item] = oldPrice === 0n ? 1n : (oldPrice * 2n > MAX_PRICE ? MAX_PRICE : oldPrice * 2n);
-      if (item === 'Conveyor') prices[item] = 50n;
-      if (item === 'Extractor') prices[item] = oldPrice === 0n ? 50n : (oldPrice * 3n > MAX_PRICE ? MAX_PRICE : oldPrice * 3n);
-      $(`${item.toLowerCase()}Price`).textContent = formatPrice(prices[item]);
-      renderInventory();
-      showToast('Bought ' + item);
+      const location=nextFreeSlot();
+      if(!location) {showToast('Inventory full');return;}
+      const price=prices[item];
+      if(money<price) {showToast('Not enough money');return;}
+      money-=price;
+      inventory[location.zone][location.index]=item;
+      if(item==='Dropper') prices[item]=price===0n?1n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
+      if(item==='Conveyor') prices[item]=50n;
+      if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
+      if(item==='Turbine') {
+        // 1.25x, rounded upward to the next multiple of five.
+        const grown=(price*5n+3n)/4n;
+        prices[item]=grown>MAX_PRICE?MAX_PRICE:((grown+4n)/5n)*5n;
+      }
+      $(`${item.toLowerCase()}Price`).textContent=formatPrice(prices[item]);
+      updateMoney();renderInventory();showToast('Bought '+item);
     }
-    $('buyDropper').addEventListener('click', () => purchase('Dropper'));
-    $('buyConveyor').addEventListener('click', () => purchase('Conveyor'));
-    $('buyExtractor').addEventListener('click', () => purchase('Extractor'));
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire']) {
+      $('buy'+type).addEventListener('click',()=>purchase(type));
+    }
 
     function sameLocation(a, b) { return !!a && !!b && a.zone === b.zone && a.index === b.index; }
     function moveOrSwap(from, to) {
@@ -486,6 +627,128 @@
     document.addEventListener('pointermove', pointerMoved);
     document.addEventListener('pointerup', pointerEnded);
     document.addEventListener('pointercancel', pointerCancelled);
+
+    // BLOBS: a dot belongs to a tile, moves along belts, and is cashed in by extractors.
+    function spawnBlob(key, now=performance.now()) {
+      if(!placed.has(key) || [...blobs.values()].some(b=>b.key===key)) return false;
+      const id=nextBlobId++;
+      blobs.set(id,{id,key,worth:1n,state:'waiting',arrivedAt:now, collectAt:0});
+      renderBlobs();
+      return true;
+    }
+    function renderBlobs() {
+      const layer=$('blobLayer');if(!layer)return;
+      const visible=new Set();
+      for (const blob of blobs.values()) {
+        const [row,col]=coords(blob.key);
+        if(row>=gridRows || col>=gridCols) continue;
+        let el=layer.querySelector(`[data-blob="${blob.id}"]`);
+        if(!el) {
+          el=document.createElement('div');el.className='blob';el.dataset.blob=blob.id;
+          el.innerHTML=`<span class="blob-worth">$${formatAmount(blob.worth)}</span><span class="blob-dot"></span>`;
+          layer.appendChild(el);
+        }
+        visible.add(String(blob.id));
+        el.classList.toggle('collecting',blob.state==='collecting');
+        el.style.left=((col+.5)/gridCols*100)+'%';
+        el.style.top=((row+.5)/gridRows*100)+'%';
+      }
+      layer.querySelectorAll('.blob').forEach(el=>{if(!visible.has(el.dataset.blob))el.remove();});
+    }
+    function blobDestination(blob) {
+      const obj=placed.get(blob.key);if(!obj)return null;
+      if(obj.type==='Conveyor') {
+        const next=neighbor(blob.key,obj.direction);
+        return next && ['Conveyor','Extractor'].includes(placed.get(next)?.type)?next:null;
+      }
+      if(obj.type==='Dropper') {
+        // Droppers prefer the right, but can feed an adjoining belt or extractor.
+        for(const dir of [1,2,3,0]) {
+          const next=neighbor(blob.key,dir);
+          if(next && ['Conveyor','Extractor'].includes(placed.get(next)?.type))return next;
+        }
+      }
+      return null;
+    }
+    function moveBlobs(now) {
+      const occupied=new Set([...blobs.values()].map(b=>b.key));
+      for(const [id,blob] of blobs) {
+        if(blob.state==='collecting') {
+          if(now>=blob.collectAt) {
+            money+=blob.worth;updateMoney();blobs.delete(id);
+          }
+          continue;
+        }
+        if(now-blob.arrivedAt<MOVE_MS-25) continue;
+        const next=blobDestination(blob);
+        if(!next || occupied.has(next)) continue;
+        occupied.delete(blob.key);occupied.add(next);
+        blob.key=next;blob.arrivedAt=now;
+        if(placed.get(next)?.type==='Extractor') {
+          blob.state='collecting';blob.collectAt=now+350;
+          placed.get(next).pulseUntil=now+350;
+        }
+      }
+      renderBlobs();
+    }
+    // Power moves only along orthogonally-adjacent wire segments.
+    // Each turbine creates one 3-second charge every 2.5 seconds.
+    function deliverPower(sourceKey,now) {
+      const queue=[],visited=new Set(),targets=new Set();
+      for(let d=0;d<4;d++) {
+        const key=neighbor(sourceKey,d);
+        if(key && placed.get(key)?.type==='Wire')queue.push(key);
+      }
+      while(queue.length) {
+        const key=queue.shift();if(visited.has(key))continue;
+        visited.add(key);
+        for(let d=0;d<4;d++) {
+          const next=neighbor(key,d),obj=next&&placed.get(next);
+          if(obj?.type==='Wire' && !visited.has(next))queue.push(next);
+          if(obj?.type==='Dropper')targets.add(next);
+        }
+      }
+      if(!targets.size)return;
+      const chosen=[...targets].sort((a,b)=>placed.get(a).poweredUntil-placed.get(b).poweredUntil)[0];
+      const dropper=placed.get(chosen);
+      dropper.poweredUntil=now+3000;
+      dropper.pulseUntil=now+250;
+      for(const key of visited)placed.get(key).wireUntil=now+3000;
+    }
+    function tickFactory() {
+      const now=performance.now();let mustRender=false;
+      for(const [key,obj] of placed) {
+        if(obj.type==='Turbine' && obj.enabled) {
+          if(now-obj.lastPower>=2500) {
+            obj.lastPower+=Math.floor((now-obj.lastPower)/2500)*2500;
+            obj.pulseUntil=now+260;
+            deliverPower(key,now);mustRender=true;
+          }
+          if(now-obj.lastUpkeep>=10000) {
+            const cycles=Math.floor((now-obj.lastUpkeep)/10000);
+            obj.lastUpkeep+=cycles*10000;
+            money-=BigInt(cycles)*5n;updateMoney();
+          }
+        }
+        if(obj.type==='Dropper' && obj.poweredUntil>now && now-obj.lastAuto>=1000) {
+          obj.lastAuto=now;
+          if(spawnBlob(key,now)) {
+            obj.pulseUntil=now+200;mustRender=true;
+          }
+        }
+        if(obj.type==='Dropper' && obj.poweredUntil<=now && obj.poweredUntil>0) {
+          obj.poweredUntil=0;mustRender=true;
+        }
+        if(obj.type==='Wire' && obj.wireUntil>0 && obj.wireUntil<=now) {
+          obj.wireUntil=0;mustRender=true;
+        }
+      }
+      if(now-lastMovementAt>=MOVE_MS) {
+        lastMovementAt=now;moveBlobs(now);
+      }
+      if(mustRender)renderGrid();
+    }
+    setInterval(tickFactory,100);
 
     function setShop(open) {
       if (open && $('backpackLayer').classList.contains('is-open')) setBackpack(false, false);
