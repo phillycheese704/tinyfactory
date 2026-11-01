@@ -12,7 +12,7 @@
       --cream: #fffdf7;
       --yellow: #ffe28b;
       --stroke: 2px solid var(--ink);
-      --hot-slot: clamp(21px, calc((100vw - 92px) / 11), 64px);
+      --hot-slot: clamp(19px, calc((100vw - 98px) / 12), 64px);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; }
@@ -49,6 +49,8 @@
     .item-art.extractor { background: #f3e5fc; }
     .item-art.turbine { background: #d7f6ff; }
     .item-art.wire { background: #fff3c7; }
+    .item-art.purifier { background: #e4f9ef; }
+    .item-art.furnace { background: #fff0dc; }
     .item-art svg { width: 58px; height: 53px; }
     .machine-icon { width: 90%; height: 90%; overflow: visible; pointer-events: none; }
     .machine-icon.dropper .plunger { animation: plunge 1.6s ease-in-out infinite; transform-origin: 32px 22px; }
@@ -60,6 +62,8 @@
     .machine-icon.turbine.off .rotor { animation-play-state: paused; opacity: .5; }
     .machine-icon.wire .wire-energy { animation: roll .65s linear infinite; }
     .machine-icon.wire:not(.powered) .wire-energy { opacity: .22; animation-play-state: paused; }
+    .machine-icon.purifier .purifier-spark { animation: sparkle 1.6s ease-in-out infinite; transform-origin: 32px 27px; }
+    .machine-icon.furnace .furnace-flame { animation: flame 1.15s ease-in-out infinite; transform-origin: 32px 39px; }
     .grid-cell .machine-icon.wire { width: 100%; height: 100%; }
     .machine-icon.dropper.powered .power-indicator { opacity: 1; }
     .power-indicator { opacity: 0; }
@@ -72,11 +76,28 @@
     @keyframes coin { 0%,38% {transform:scale(.7);opacity:.2} 64% {transform:scale(1.1);opacity:1} 100% {transform:scale(.7);opacity:.2} }
     @keyframes spin { to {transform:rotate(360deg)} }
     @keyframes glow {50% { opacity:.6;transform:scale(1.12)} }
+    @keyframes sparkle { 0%,100% {opacity:.3;transform:scale(.75) rotate(0deg)} 50% {opacity:1;transform:scale(1.13) rotate(25deg)} }
+    @keyframes flame {0%,100%{transform:scale(.88) translateY(2px)}50%{transform:scale(1.08) translateY(-2px)}}
+    @keyframes glint {0%,100%{opacity:0;transform:translate(-3px,3px) scale(.35) rotate(0)}35%,70%{opacity:1;transform:translate(1px,-2px) scale(1.1) rotate(35deg)}}
+    @keyframes reset-wave {0%{opacity:0;transform:translate(-50%,-50%) scale(.1)}20%{opacity:.6}100%{opacity:0;transform:translate(-50%,-50%) scale(7)}}
+    @keyframes reset-pop {0%,100%{transform:translateX(-50%) rotate(-1deg)}30%{transform:translateX(-50%) rotate(13deg) scale(1.15)}60%{transform:translateX(-50%) rotate(-12deg) scale(.92)}}
+    @keyframes hold-progress {to{transform:scaleX(1)}}
     .blob-layer { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:visible; }
     .blob { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; justify-content:center; width:24px;height:24px; transition:left .36s linear,top .36s linear; will-change:left,top; }
     .blob-dot { width:clamp(7px, .9vw, 13px);height:clamp(7px, .9vw, 13px);background:#202020;border-radius:48% 53% 50% 45%;border:1px solid #000;box-shadow:1px 2px 0 #858585;animation:glow 1.1s ease-in-out infinite; }
     .blob-worth { position:absolute;bottom:calc(50% + 6px);left:50%;transform:translateX(-50%);color:#147b3d;font-size:clamp(8px,.76vw,11px);font-weight:900;text-shadow:-1px -1px white,1px 1px white,-1px 1px white,1px -1px white;white-space:nowrap; }
     .blob.collecting { opacity:.35;transition:left .36s linear,top .36s linear,opacity .36s linear; }
+    .blob-glint { position:absolute; color:#82eb9e; font-size:16px; line-height:1; left:12px; top:-3px; opacity:0; pointer-events:none; animation:glint 1.2s ease-in-out infinite; }
+    .stack-count { position:absolute;right:1px;top:0;z-index:3;line-height:1.1;font-size:clamp(8px,1.25vw,13px);font-weight:900;background:#fffce7;border:1px solid #292929;border-radius:5px;padding:1px 2px;pointer-events:none; }
+    .rotate-toggle { background:#dff2ff;border-color:#3874a2; }
+    .rotate-toggle[aria-pressed="true"] {background:#c0e1ff;outline:2px solid #2a83ce;}
+    .rotate-toggle svg { width:68%;height:68%; }
+    .direction-mark { position:absolute;right:1px;top:0;z-index:3;pointer-events:none;color:#123e6e;background:#e6f5ff;border:1px solid #2861a4;border-radius:5px;font:900 clamp(10px,1.3vw,15px)/1 sans-serif;padding:1px 2px; }
+    #balance { touch-action:none;user-select:none;-webkit-user-select:none; }
+    #balance::before {content:'';position:absolute;left:3px;right:3px;bottom:3px;height:4px;background:#48a9e0;border-radius:4px;transform:scaleX(0);transform-origin:left;opacity:0; }
+    body.money-holding #balance::before {opacity:1;animation:hold-progress 3s linear forwards;}
+    body.resetting #balance {animation:reset-pop .85s ease-in-out;}
+    body.resetting .world::after {content:'';position:fixed;left:50%;top:50%;width:14vmin;height:14vmin;border:9px solid #ffe18c;border-radius:50%;pointer-events:none;z-index:12;animation:reset-wave .9s ease-out forwards; }
     body:not(.has-place-tool):not(.dragging-to-grid):not(.delete-active) .grid-cell:not(.occupied) { pointer-events:none; }
     .grid-cell.occupied { pointer-events:auto; }
     .grid-cell.occupied.is-powered { box-shadow:inset 0 0 0 1px #ffd34e,0 0 6px #ffe08b; }
@@ -89,7 +110,7 @@
     /* Fixed, ten-slot inventory bar. Nine storage slots and a backpack button. */
     .hotbar-wrap { position: fixed; z-index: 5; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100% - 12px); padding: 7px; border: 2px solid var(--ink); border-radius: 16px 14px 17px 12px; background: #fffdf7; box-shadow: 3px 4px 0 var(--ink); }
     body.bag-open .hotbar-wrap { z-index: 40; }
-    .hotbar { display: grid; grid-template-columns: repeat(11, var(--hot-slot)); gap: clamp(3px, .65vw, 6px); align-items: center; }
+    .hotbar { display: grid; grid-template-columns: repeat(12, var(--hot-slot)); gap: clamp(3px, .65vw, 6px); align-items: center; }
     .storage-slot, .bag-toggle { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 0; flex: 0 0 auto; border: 2px solid #575757; border-radius: 10px 8px 11px 9px; background: #fff; cursor: pointer; transition: background .12s, border-color .12s, transform .12s; }
     .storage-slot { touch-action: none; user-select: none; -webkit-user-select: none; }
     .storage-slot.has-item { background: #fff9e9; }
@@ -183,6 +204,7 @@
     <div class="hotbar" id="hotbar">
       <button type="button" class="bag-toggle" id="bagToggle" aria-label="Open backpack" aria-controls="backpackPanel" aria-expanded="false" title="Backpack"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-backpack"/></svg></button>
       <button type="button" class="bag-toggle delete-toggle" id="deleteToggle" aria-label="Select delete tool" aria-pressed="false" title="Delete placed item"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-delete"/></svg></button>
+      <button type="button" class="bag-toggle rotate-toggle" id="rotateToggle" aria-label="Select rotate tool" aria-pressed="false" title="Rotate machines"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M48 19a23 23 0 1 0 4 18" fill="none" stroke="#286399" stroke-width="5" stroke-linecap="round"/><path d="M46 7v16H30" fill="none" stroke="#286399" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
     </div>
   </nav>
 
@@ -213,6 +235,14 @@
         <button type="button" class="item" id="buyWire">
           <span class="item-art wire"></span>
           <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$50</span></span>
+        </button>
+        <button type="button" class="item" id="buyPurifier">
+          <span class="item-art purifier"></span>
+          <span class="item-bottom"><span class="item-name">Purifier</span><span class="price" id="purifierPrice">$125</span></span>
+        </button>
+        <button type="button" class="item" id="buyFurnace">
+          <span class="item-art furnace"></span>
+          <span class="item-bottom"><span class="item-name">Furnace</span><span class="price" id="furnacePrice">$400</span></span>
         </button>
       </div>
     </section>
@@ -352,6 +382,16 @@
       if (type === 'Turbine') return frame(`<path d="M9 11h46v37H9z" fill="#c8f2ff" ${stroke}/><rect x="13" y="15" width="38" height="29" rx="7" fill="#f7fdff" stroke="#7baab9" stroke-width="2"/>
         <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
         <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
+      if (type === 'Purifier') return frame(`<rect x="6" y="7" width="52" height="42" rx="11" fill="#d8f7e9" ${stroke}/>
+        <path d="M0 29h13M51 29h13" stroke="#2b9b7f" stroke-width="7" stroke-linecap="round"/>
+        <rect x="14" y="13" width="36" height="30" rx="8" fill="#fcfffb" stroke="#60ad91" stroke-width="2.3"/>
+        <g class="purifier-spark"><path d="M32 15l4.2 10 10 3-10 3-4.2 11-4-11-10-3 10-3z" fill="#69d6a5" stroke="#2a936c" stroke-width="1.5"/></g>
+        <circle cx="19" cy="16" r="2.4" fill="#c0fae0"/>`);
+      if (type === 'Furnace') return frame(`<rect x="5" y="8" width="54" height="41" rx="10" fill="#f6bd8f" ${stroke}/>
+        <path d="M0 29h11M53 29h11" stroke="#aa623d" stroke-width="7" stroke-linecap="round"/>
+        <rect x="14" y="12" width="36" height="33" rx="7" fill="#5a3f38" stroke="#7c4029" stroke-width="2"/>
+        <g class="furnace-flame"><path d="M32 17c6 9 12 11 8 19-3 8-14 10-19 2-5-7 1-13 4-18 1 6 4 8 7-3z" fill="#ff9c36" stroke="#a74d19" stroke-width="1.5"/><path d="M32 27c3 4 5 8 3 11-3 5-9 2-7-3z" fill="#ffe36c"/></g>
+        <path d="M15 48v5m34-5v5" ${stroke}/>`);
       if (type === 'Wire') {
         // Connection drawing follows the actual blue-input/red-output route.
         // Both sockets sit at tile edges; a rounded curve joins perpendicular sides.
@@ -493,7 +533,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
