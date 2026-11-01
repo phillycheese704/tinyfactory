@@ -208,7 +208,7 @@
         </button>
         <button type="button" class="item" id="buyTurbine">
           <span class="item-art turbine"></span>
-          <span class="item-bottom"><span class="item-name">Turbine</span><span class="price" id="turbinePrice">$750</span></span>
+          <span class="item-bottom"><span class="item-name">Turbine</span><span class="price" id="turbinePrice">$50</span></span>
         </button>
         <button type="button" class="item" id="buyWire">
           <span class="item-art wire"></span>
@@ -263,7 +263,7 @@
       backpack: Array(BACKPACK_SIZE).fill(null)
     };
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 750n, Wire: 50n };
+    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 50n, Wire: 50n };
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
