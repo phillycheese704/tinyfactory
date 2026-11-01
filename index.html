@@ -78,15 +78,19 @@
     .bag-grid .slot-icon { width: 78%; height: 78%; }
     .drag-ghost { position: fixed; z-index: 200; pointer-events: none; display: grid; place-items: center; width: 66px; height: 66px; border: 2px solid var(--ink); border-radius: 12px; background: #fff1c8; box-shadow: 3px 4px 0 rgba(0,0,0,.3); opacity: .94; transform: translate(-50%,-50%) rotate(-7deg); }
     .drag-ghost svg { width: 80%; height: 80%; }
-    /* The build board stays square, clear of the header and hotbar in either iPad orientation. */
-    .factory-grid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(calc(100vw - 32px), calc(100dvh - 200px), 720px); aspect-ratio: 1; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); grid-template-rows: repeat(16, minmax(0, 1fr)); background: #fefefe; border: 2px solid #797979; border-radius: 5px; box-shadow: 3px 3px 0 #d8d8d8; overflow: hidden; }
-    .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; border-right: 1px dashed #dedede; border-bottom: 1px dashed #dedede; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: manipulation; }
-    .grid-cell:nth-child(16n) { border-right: 0; }
-    .grid-cell:nth-last-child(-n+16) { border-bottom: 0; }
+    /* The square board fills the safe space between the top controls and hotbar.
+       Placed machines remain visible, but empty grid lines only appear while placing. */
+    .factory-grid { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 0; height: 0; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); grid-template-rows: repeat(16, minmax(0, 1fr)); background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: hidden; pointer-events: none; }
+    body.has-place-tool .factory-grid, body.dragging-to-grid .factory-grid { background: #fefefe; border-color: #797979; box-shadow: 3px 3px 0 #d8d8d8; pointer-events: auto; }
+    body.delete-active .factory-grid { pointer-events: auto; }
+    .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: manipulation; }
+    body.has-place-tool .grid-cell, body.dragging-to-grid .grid-cell { border-right: 1px dashed #dedede; border-bottom: 1px dashed #dedede; }
+    body.has-place-tool .grid-cell:nth-child(16n), body.dragging-to-grid .grid-cell:nth-child(16n) { border-right: 0; }
+    body.has-place-tool .grid-cell:nth-last-child(-n+16), body.dragging-to-grid .grid-cell:nth-last-child(-n+16) { border-bottom: 0; }
     .grid-cell:focus-visible { outline: 2px solid #1b7eb8; outline-offset: -2px; }
-    .grid-cell.occupied { background: #fff3d7; }
+    .grid-cell.occupied { background: #fff3d7; border-radius: 4px; box-shadow: inset 0 0 0 1px #e6d7af; }
     .grid-cell .slot-icon { width: 94%; height: 94%; }
-    body.has-place-tool .grid-cell:not(.occupied):hover, .grid-cell.place-over { background: #def6e5; box-shadow: inset 0 0 0 2px #3b9460; }
+    body.has-place-tool .grid-cell:not(.occupied):hover, body.dragging-to-grid .grid-cell:not(.occupied):hover, .grid-cell.place-over { background: #def6e5; box-shadow: inset 0 0 0 2px #3b9460; }
     body.delete-active .grid-cell.occupied:hover { background: #ffdede; box-shadow: inset 0 0 0 2px #d84141; }
     .toast { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--hot-slot) + 44px); left: 50%; transform: translate(-50%, 8px); z-index: 80; opacity: 0; pointer-events: none; background: #fff8d6; border: var(--stroke); border-radius: 12px 9px 13px 10px; box-shadow: 3px 4px 0 var(--ink); padding: 10px 20px; font-size: 15px; font-weight: 800; white-space: nowrap; transition: opacity .18s, transform .18s; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -204,6 +208,27 @@
     let dragging = null;
     let toastTimer;
 
+    // Measure real UI bounds instead of guessing a viewport height. On orientation
+    // changes, keep all 16 rows and columns visible above the hotbar labels.
+    function fitFactoryGrid() {
+      const header = document.querySelector('.topbar').getBoundingClientRect();
+      const balance = $('balance').getBoundingClientRect();
+      const hotbar = document.querySelector('.hotbar-wrap').getBoundingClientRect();
+      const top = Math.max(header.bottom, balance.bottom) + 8;
+      const viewportBottom = window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
+      const bottom = Math.min(viewportBottom, hotbar.top - 34);
+      const usableHeight = Math.max(0, bottom - top);
+      const side = Math.max(0, Math.floor(Math.min(window.innerWidth - 16, usableHeight)));
+      const grid = $('factoryGrid');
+      grid.style.width = side + 'px';
+      grid.style.height = side + 'px';
+      grid.style.top = (top + (usableHeight - side) / 2) + 'px';
+    }
+    window.addEventListener('resize', fitFactoryGrid);
+    window.visualViewport?.addEventListener('resize', fitFactoryGrid);
+    window.visualViewport?.addEventListener('scroll', fitFactoryGrid);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitFactoryGrid).observe(document.querySelector('.hotbar-wrap'));
+
     function iconFor(item) { return `<svg class="slot-icon" viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-${item.toLowerCase()}"></use></svg>`; }
     function formatAmount(value) {
       const units = [[1000000000000000n, 'Qa'], [1000000000000n, 'T'], [1000000000n, 'B'], [1000000n, 'M'], [1000n, 'K']];
@@ -298,8 +323,10 @@
       $('bagCount').textContent = `${inventory.backpack.filter(Boolean).length}/${BACKPACK_SIZE}`;
       $('deleteToggle').setAttribute('aria-pressed', String(deleteActive));
       $('deleteToggle').innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-delete"/></svg>${deleteActive ? '<span class="tool-label">Delete</span>' : ''}`;
-      document.body.classList.toggle('has-place-tool', selectedHotbar !== null);
+      const placing = selectedHotbar !== null && !!inventory.hotbar[selectedHotbar];
+      document.body.classList.toggle('has-place-tool', placing);
       document.body.classList.toggle('delete-active', deleteActive);
+      $('factoryGrid').querySelectorAll('.grid-cell').forEach(cell => { cell.tabIndex = placing || deleteActive ? 0 : -1; });
     }
     function nextFreeSlot() {
       for (const zone of ['hotbar', 'backpack']) {
@@ -369,6 +396,7 @@
       return node ? Number(node.dataset.cell) : null;
     }
     function clearDragStyles() {
+      document.body.classList.remove('dragging-to-grid');
       document.querySelectorAll('.drag-over, .drag-origin, .place-over').forEach(el => el.classList.remove('drag-over', 'drag-origin', 'place-over'));
       document.querySelector('.drag-ghost')?.remove();
     }
@@ -388,6 +416,7 @@
       if (!dragging.active) {
         dragging.active = true;
         selected = null;
+        if (dragging.from.zone === 'hotbar' && !$('backpackLayer').classList.contains('is-open')) document.body.classList.add('dragging-to-grid');
         const ghost = document.createElement('div');
         ghost.className = 'drag-ghost';
         ghost.innerHTML = iconFor(dragging.item);
@@ -468,6 +497,7 @@
     updateMoney();
     renderInventory();
     renderGrid();
+    fitFactoryGrid();
   </script>
 </body>
 </html>
