@@ -74,6 +74,9 @@
     .item-art.particleaccelerator {background:#dddcff}
     .item-art.superdropper {background:#ffefc7}
     .item-art.sorter {background:#d8fff0}
+    .item-art.valuegate {background:#e9e1ff}
+    .machine-icon.valuegate .belt-stripes{animation:roll .65s linear infinite}
+    .grid-cell .machine-status{max-width:100%;overflow:hidden;text-overflow:ellipsis}
     .item-art.presser {background:#ffdecf}
     .machine-icon.particleaccelerator .accelerator-ring {animation:spin 2s linear infinite;transform-origin:32px 28px}
     .machine-icon.particleaccelerator .accelerator-core {animation:glow 1.2s ease-in-out infinite;transform-origin:32px 28px}
@@ -86,7 +89,7 @@
     .sorter-config {width:min(420px,95vw);background:#fffdf5;border:3px solid #292929;box-shadow:7px 8px 0 #292929;border-radius:16px;padding:20px;display:grid;gap:13px}
     .sorter-config h2 {margin:0;font-size:22px}
     .sorter-config label {display:grid;gap:5px;font-weight:800}
-    .sorter-config select {background:white;border:2px solid #292929;border-radius:9px;padding:10px;font-size:16px}
+    .sorter-config select,.sorter-config input {width:100%;min-width:0;background:white;border:2px solid #292929;border-radius:9px;padding:10px;font-size:16px}
     .sorter-actions {display:flex;gap:8px;justify-content:flex-end}
     .sorter-actions button{border:2px solid #292929;border-radius:9px;background:#ffe39b;padding:10px 18px;font-weight:800;cursor:pointer}
     .machine-icon.upgrader .upgrade-core { animation:glow 1.3s ease-in-out infinite; transform-origin:32px 28px; }
@@ -321,6 +324,7 @@
         <button type="button" class="item" id="buyParticleAccelerator" data-category="Processing" title="3×3 powered batch accelerator"><span class="item-art particleaccelerator"></span><span class="item-bottom"><span class="item-name">Particle Accelerator</span><span class="price" id="particleacceleratorPrice">$1B</span></span></button>
         <button type="button" class="item" id="buySuperDropper" data-category="Production"><span class="item-art superdropper"></span><span class="item-bottom"><span class="item-name">Super Dropper</span><span class="price" id="superdropperPrice">$5K</span></span></button>
         <button type="button" class="item" id="buySorter" data-category="Transport" title="Logic block: place on a conveyor"><span class="item-art sorter"></span><span class="item-bottom"><span class="item-name">Sorter</span><span class="price" id="sorterPrice">$10</span></span></button>
+        <button type="button" class="item" id="buyValueGate" data-category="Transport" title="Logic block: route blobs above a chosen value"><span class="item-art valuegate"></span><span class="item-bottom"><span class="item-name">Value Gate</span><span class="price" id="valuegatePrice">$10</span></span></button>
         <button type="button" class="item" id="buyPresser" data-category="Processing"><span class="item-art presser"></span><span class="item-bottom"><span class="item-name">Presser</span><span class="price" id="presserPrice">$450</span></span></button>
       </div>
     </section>
@@ -357,6 +361,21 @@
     </div>
   </div>
 
+  <div class="sorter-panel" id="valueGatePanel" role="dialog" aria-modal="true" aria-label="Configure Value Gate">
+    <div class="sorter-config">
+      <h2>💎 Value Gate settings</h2>
+      <label>Divert blobs worth more than $
+        <input type="text" id="valueGateThreshold" inputmode="numeric" pattern="[0-9]*" maxlength="30" value="50" placeholder="Enter an amount" autocomplete="off">
+      </label>
+      <label>Send higher-value blobs
+        <select id="valueGateDirection">
+          <option value="0">↑ Up</option><option value="1">→ Right</option>
+          <option value="2">↓ Down</option><option value="3">← Left</option>
+        </select>
+      </label>
+      <div class="sorter-actions"><button type="button" id="valueGateCancel">Cancel</button><button type="button" id="valueGateSave">Save</button></div>
+    </div>
+  </div>
   <script>
     'use strict';
     const $ = id => document.getElementById(id);
@@ -380,7 +399,8 @@
     function machine(type, purchaseCost = 0n) {
       const now = performance.now();
       return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0,
-        batch:[],pending:[],batchRemaining:3000,batchLastAt:now,sortGrade:'diamond',sortDir:2 };
+        batch:[],pending:[],batchRemaining:3000,batchLastAt:now,sortGrade:'diamond',sortDir:2,
+        gateThreshold:50n,gateDir:2 };
     }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
@@ -405,7 +425,7 @@
     const MONEY_TREND_WINDOW_MS = 10000;
     let lastTrackedMoney = null;
     const moneyTransactions = [];
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n,ValueGate:10n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -471,6 +491,8 @@
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
             sortGrade:obj.sortGrade,sortDir:obj.sortDir,
+            gateThreshold:obj.type==='ValueGate'?String(obj.gateThreshold):undefined,
+            gateDir:obj.type==='ValueGate'?obj.gateDir:undefined,
             batch:obj.type==='ParticleAccelerator'?obj.batch.map(serializeBlob):undefined,
             pending:obj.type==='ParticleAccelerator'?obj.pending.map(serializeBlob):undefined,
             batchRemaining:obj.type==='ParticleAccelerator'?obj.batchRemaining:undefined,
@@ -507,7 +529,7 @@
         for(const [key,initial] of Object.entries(initialPrices))
           prices[key]=savedPrices[key]===undefined?initial:parseMoney(savedPrices[key],initial);
         // New fixed-cost wires and logic blocks override prices in older saves.
-        for(const type of ['Wire','Splitter','Sorter']){
+        for(const type of ['Wire','Splitter','Sorter','ValueGate']){
           if(prices[type]!==10n){prices[type]=10n;markDirty();}
         }
         // Older saves used a free first Advanced Dropper. Upgrade their next
@@ -550,6 +572,13 @@
           if(obj.type==='Sorter'){
             obj.sortGrade=['normal','bronze','silver','gold','diamond'].includes(entry[1].sortGrade)?entry[1].sortGrade:'diamond';
             obj.sortDir=Number.isInteger(entry[1].sortDir)?entry[1].sortDir:((obj.direction+1)%4);
+          }
+          if(obj.type==='ValueGate'){
+            const threshold=String(entry[1].gateThreshold??'50');
+            obj.gateThreshold=/^\d{1,30}$/.test(threshold)?BigInt(threshold):50n;
+            const dir=Number(entry[1].gateDir);
+            obj.gateDir=Number.isInteger(dir)&&dir>=0&&dir<=3&&dir!==obj.direction?
+              dir:(obj.direction+1)%4;
           }
           if(obj.type==='ParticleAccelerator'){
             obj.batch=Array.isArray(entry[1].batch)?entry[1].batch.slice(0,5).map(reviveBlob):[];
@@ -734,6 +763,13 @@
         <path d="M9 14h46M9 42h46" stroke="#dce3ff" stroke-width="3"/>
         <circle cx="32" cy="28" r="15" fill="#696abe" stroke="#2d326e" stroke-width="3"/>
         <path d="M20 28h24m-12-12v24" stroke="#c3edff" stroke-width="2" stroke-dasharray="4 4"/>`);
+      if(type==='ValueGate')return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="5" y="7" width="54" height="42" rx="9" fill="#d9c9ff" ${stroke}/>
+        <path d="M0 28H64" stroke="#8e7db4" stroke-width="11" stroke-linecap="round"/>
+        <path class="belt-stripes" d="M0 28H64" stroke="#fbebae" stroke-width="5" stroke-dasharray="7 9"/>
+        <path d="M18 28h28m-14 0 13-13" stroke="#5847a5" stroke-width="5.2" stroke-linecap="round" fill="none"/>
+        <path d="M32 19l4.8 8 8 3-8 3-4.8 8-4.8-8-8-3 8-3z" fill="#ffde78" stroke="#765c27" stroke-width="2"/>
+        <path d="M38 13l7-3m-7 27 7 3" stroke="#fffbff" stroke-width="2"/></g>`);
       if(type==='Sorter')return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
         <rect x="5" y="7" width="54" height="42" rx="9" fill="#c5eed9" ${stroke}/>
         <path d="M0 28h64" stroke="#639c77" stroke-width="11" stroke-linecap="round"/>
@@ -906,7 +942,7 @@
       }
     }
     const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgrader','Presser']);
-    const logicTypes=new Set(['Splitter','Sorter']);
+    const logicTypes=new Set(['Splitter','Sorter','ValueGate']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','SuperDropper','CryoChamber','ParticleAccelerator','AcceleratorPart']);
     const canGeneratePower=new Set(['Turbine','HydraulicPump','HydraulicPart']);
     // A 2×3 Hydraulic Pump turns into a 3×2 footprint when rotated vertically.
@@ -1097,7 +1133,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','ValueGate','Presser']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -1370,7 +1406,7 @@
       renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','ValueGate','Presser']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
