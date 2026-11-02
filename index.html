@@ -795,7 +795,7 @@
           for(let d=0;d<4;d++) {
             const nearby=neighbor(key,d),type=nearby && placed.get(nearby)?.type;
             if(type==='Turbine')sources.push({wire:key,machine:nearby});
-            if(canReceivePower.has(type))sinks.push({wire:key,machine:rootKey(nearby)});
+            if(canReceivePower.has(type))sinks.push({wire:key,machine:nearby});
           }
         }
         let fullPath=null;
