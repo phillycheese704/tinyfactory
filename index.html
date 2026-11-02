@@ -97,7 +97,7 @@
     .machine-icon.lasercutter .laser-beam{animation:laser-pulse .65s ease-in-out infinite}
     @keyframes laser-pulse{50%{opacity:.4;stroke-width:10}}
     .machine-icon.splitter .splitter-led{animation:glow .9s ease-in-out infinite}
-    .machine-icon.splitter .belt-stripes{animation:roll .65s linear infinite}
+    .machine-icon.splitter .belt-stripes,.machine-icon.sorter .belt-stripes{animation:roll .65s linear infinite}
     .machine-icon.advanceddropper .plunger{animation:plunge 1s ease-in-out infinite;transform-origin:32px 22px}
     .power-mark{position:absolute;left:1px;bottom:0;font-size:clamp(8px,.85vw,11px);color:#ae7b11;background:#fff8d8;border-radius:3px;pointer-events:none;font-weight:900}
     .item-art svg { width: 58px; height: 53px; }
@@ -637,6 +637,35 @@
         <rect x="7" y="9" width="50" height="38" rx="8" fill="#f5b9c3" ${stroke}/>
         <rect x="17" y="16" width="30" height="24" rx="6" fill="#cf5269" stroke="#8e2a40" stroke-width="2.5"/>
         <circle cx="32" cy="28" r="7" fill="#ff294b"/><path d="M0 28h9m46 0h9" stroke="#e84965" stroke-width="6"/></g>`);
+      if(type==='SuperDropper')return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="8" y="8" width="48" height="39" rx="8" fill="#ffda7b" ${stroke}/>
+        <rect x="15" y="13" width="34" height="14" rx="5" fill="#fff5c9" stroke="#996c36" stroke-width="2"/>
+        <g class="super-plunger"><path d="M32 26v16m-8-7 8 10 8-10" fill="none" ${stroke}/></g>
+        <circle cx="17" cy="18" r="4" fill="#d5ecfa"/><circle cx="47" cy="18" r="4" fill="#fff1b3"/>
+        <path d="M20 6l4-5 4 5m12 0 4-5 4 5" fill="none" stroke="#deb358" stroke-width="2"/></g>`,`${powered?'powered':''}`);
+      if(type==='Presser')return frame(`<rect x="6" y="8" width="52" height="43" rx="8" fill="#f9bea8" ${stroke}/>
+        <path d="M0 29h11m42 0h11" stroke="#b46650" stroke-width="7"/>
+        <path class="press-head" d="M15 14h34v10H15zM30 7h4v8" fill="#8b6866" ${stroke}/>
+        <rect x="15" y="35" width="34" height="7" rx="3" fill="#696977" ${stroke}/>
+        <path d="M20 47v6m24-6v6" ${stroke}/>`);
+      if(type==='ParticleAccelerator')return frame(`<rect x="4" y="4" width="56" height="48" rx="9" fill="#9ea4ee" ${stroke}/>
+        <path d="M0 28h13m38 0h13" stroke="#474ea5" stroke-width="7"/>
+        <circle cx="32" cy="28" r="21" fill="#272b70" stroke="#e0d5ff" stroke-width="3"/>
+        <g class="accelerator-ring"><ellipse cx="32" cy="28" rx="18" ry="8" fill="none" stroke="#77e7ff" stroke-width="3"/>
+        <ellipse cx="32" cy="28" rx="8" ry="18" fill="none" stroke="#f5bfff" stroke-width="3"/></g>
+        <circle class="accelerator-core" cx="32" cy="28" r="8" fill="#ffec8f"/>
+        <path d="M12 7l5 5m29-5-5 5m-29 32 5-5m29 5-5-5" stroke="#f1e6ff" stroke-width="2"/>`,`${powered?'powered':''}`);
+      if(type==='AcceleratorPart')return frame(`<rect x="4" y="4" width="56" height="48" rx="7" fill="#aaa9e2" ${stroke}/>
+        <path d="M9 14h46M9 42h46" stroke="#dce3ff" stroke-width="3"/>
+        <circle cx="32" cy="28" r="15" fill="#696abe" stroke="#2d326e" stroke-width="3"/>
+        <path d="M20 28h24m-12-12v24" stroke="#c3edff" stroke-width="2" stroke-dasharray="4 4"/>`);
+      if(type==='Sorter')return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="5" y="7" width="54" height="42" rx="9" fill="#c5eed9" ${stroke}/>
+        <path d="M0 28h64" stroke="#639c77" stroke-width="11" stroke-linecap="round"/>
+        <path class="belt-stripes" d="M0 28h64" stroke="#ecf0bc" stroke-width="5" stroke-dasharray="7 9"/>
+        <path d="M27 28h24m-24 0 16-16" stroke="#4085a9" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="28" cy="28" r="8" fill="#ffeb78" stroke="#686341" stroke-width="2"/>
+        <path d="M34 21l6-4m-6 20 6 4" stroke="#fff" stroke-width="2"/></g>`);
       if (type === 'Upgraded') return frame(`<rect x="6" y="8" width="52" height="40" rx="11" fill="#e3d5ff" ${stroke}/>
         <path d="M0 28h14m36 0h14" stroke="#8969bd" stroke-width="8" stroke-linecap="round"/>
         <rect x="13" y="14" width="38" height="28" rx="8" fill="#faf6ff" stroke="#9f7bd0" stroke-width="2.4"/>
