@@ -283,7 +283,7 @@
         </button>
         <button type="button" class="item" id="buyCryoChamber" data-category="Processing"><span class="item-art cryochamber"></span><span class="item-bottom"><span class="item-name">Cryo Chamber</span><span class="price" id="cryochamberPrice">$750</span></span></button>
         <button type="button" class="item" id="buyLaserCutter" data-category="Processing"><span class="item-art lasercutter"></span><span class="item-bottom"><span class="item-name">Laser Cutter</span><span class="price" id="lasercutterPrice">$300</span></span></button>
-        <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">FREE</span></span></button>
+        <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">$200</span></span></button>
         <button type="button" class="item" id="buySplitter" data-category="Transport"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$50</span></span></button>
       </div>
     </section>
@@ -343,7 +343,7 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:0n,Splitter:50n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:50n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -371,7 +371,7 @@
       if(!saveDirty)return;
       try{
         const data={
-          version:1,money:String(money),
+          version:1,pricingVersion:2,money:String(money),
           prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
@@ -393,6 +393,14 @@
         money=parseMoney(data.money);
         for(const [key,initial] of Object.entries(initialPrices))
           prices[key]=data.prices?.[key]===undefined?initial:parseMoney(data.prices[key],initial);
+        // Older saves used a free first Advanced Dropper. Upgrade their next
+        // purchase price while preserving the cost paid for already-owned items.
+        if(data.pricingVersion!==2){
+          const oldNextPrice=parseMoney(data.prices?.AdvancedDropper,0n);
+          prices.AdvancedDropper=oldNextPrice===0n?200n:
+            oldNextPrice*200n>MAX_PRICE?MAX_PRICE:oldNextPrice*200n;
+          markDirty();
+        }
         for(let i=0;i<HOTBAR_SIZE;i++){
           const type=data.hotbar?.[i],costs=data.hotbarCosts?.[i];
           if(validMachines.has(type)&&Array.isArray(costs)&&costs.length>0){
@@ -982,7 +990,7 @@
       if(item==='Furnace') prices[item]=price*3n/2n>MAX_PRICE?MAX_PRICE:((price*3n+10n)/20n)*10n;
       if(item==='CryoChamber') prices[item]=price+50n>MAX_PRICE?MAX_PRICE:price+50n;
       if(item==='LaserCutter') prices[item]=price+180n>MAX_PRICE?MAX_PRICE:price+180n;
-      if(item==='AdvancedDropper') prices[item]=price===0n?2n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
+      if(item==='AdvancedDropper') prices[item]=price*2n>MAX_PRICE?MAX_PRICE:price*2n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
         // 1.25x, rounded upward to the next multiple of five.
