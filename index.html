@@ -127,6 +127,7 @@
     body.resetting #balance {animation:reset-pop .85s ease-in-out;}
     body.resetting .world::after {content:'';position:fixed;left:50%;top:50%;width:14vmin;height:14vmin;border:9px solid #ffe18c;border-radius:50%;pointer-events:none;z-index:12;animation:reset-wave .9s ease-out forwards; }
     body:not(.has-place-tool):not(.dragging-to-grid):not(.delete-active) .grid-cell:not(.occupied) { pointer-events:none; }
+    body.move-active .grid-cell:not(.occupied){pointer-events:auto;}
     .grid-cell.occupied { pointer-events:auto; }
     .grid-cell.occupied.is-powered { box-shadow:inset 0 0 0 1px #ffd34e,0 0 6px #ffe08b; }
     .grid-cell.occupied.is-powered::after { content:'⚡';position:absolute;right:0;top:0;font-size:clamp(8px,.8vw,12px);line-height:1;pointer-events:none; }
@@ -639,7 +640,7 @@
           for(let d=0;d<4;d++) {
             const nearby=neighbor(key,d),type=nearby && placed.get(nearby)?.type;
             if(type==='Turbine')sources.push({wire:key,machine:nearby});
-            if(type==='Dropper')sinks.push({wire:key,machine:nearby});
+            if(canReceivePower.has(type))sinks.push({wire:key,machine:nearby});
           }
         }
         let fullPath=null;
@@ -689,11 +690,17 @@
           const previous=fullPath[i-1],next=fullPath[i+1];
           const towardsPrevious=previous?edgeDirection(key,previous):null;
           const towardsNext=next?edgeDirection(key,next):null;
-          const outputDir=towardsNext??(towardsPrevious!=null?(towardsPrevious+2)%4:obj.direction);
-          const inputDir=towardsPrevious??(outputDir+2)%4;
+          const outputDir=obj.manuallyRotated&&obj.shape===0?obj.direction:towardsNext??(towardsPrevious!=null?(towardsPrevious+2)%4:obj.direction);
+          const inputDir=obj.manuallyRotated&&obj.shape===0?(outputDir+2)%4:towardsPrevious??(outputDir+2)%4;
           wirePorts.set(key,{inputDir,outputDir});
           unused.delete(key);
         }
+      }
+      for(const [key,obj] of placed)if(obj.type==='Wire'&&obj.shape>0){
+        const inputDir=(obj.direction+2)%4;
+        const outputs=obj.shape===2?[0,1,2,3].filter(d=>d!==inputDir):
+          [obj.direction,(obj.direction+1)%4,(obj.direction+3)%4].filter(d=>d!==inputDir);
+        wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
     const processorTypes=new Set(['Purifier','Furnace','CryoChamber']);
@@ -859,19 +866,21 @@
       const now=performance.now();
       $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
         const key=cellKey(index), obj=placed.get(key);
-        const powered=!!obj && (obj.poweredUntil>now || obj.wireUntil>now);
+        const powerCount=obj?.charges?.filter(exp=>exp>now).length||0;
+        const powered=!!obj && (powerCount>0 || obj.poweredUntil>now || obj.wireUntil>now);
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
-        const signature=obj ? [obj.type,obj.direction,obj.enabled,output,incoming,powered,rotateActive].join('|') : '';
+        const signature=obj ? [obj.type,obj.direction,obj.shape,obj.enabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:''):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
+        cell.classList.toggle('move-source',moveFrom===key);
         cell.classList.toggle('is-powered',powered);
         cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
-        cell.title=obj ? (rotateActive?'Tap to rotate 90°':obj.type==='Conveyor'?'Select rotate tool to turn':obj.type==='Wire'?'Auto-connects around corners':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
+        cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':obj.type==='Turbine'?'Tap to switch on/off':obj.type):'Empty tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
@@ -947,7 +956,8 @@
       const placing = selectedHotbar !== null && !!inventory.hotbar[selectedHotbar];
       document.body.classList.toggle('has-place-tool', placing);
       document.body.classList.toggle('delete-active', deleteActive);
-      $('factoryGrid').querySelectorAll('.grid-cell').forEach(cell => { cell.tabIndex = placing || deleteActive ? 0 : -1; });
+      document.body.classList.toggle('move-active',moveActive);
+      $('factoryGrid').querySelectorAll('.grid-cell').forEach(cell => { cell.tabIndex = placing || deleteActive || rotateActive || moveActive ? 0 : -1; });
     }
     function nextFreeSlot(item) {
       for(let index=0;index<HOTBAR_SIZE;index++)
