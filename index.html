@@ -313,6 +313,94 @@
     // Automatic wire topology is recalculated only when a machine is placed, removed or rotated.
     let wireLayoutsDirty = true;
     const wirePorts = new Map();
+    const SAVE_KEY='tiny-factory-save-v1';
+    const validMachines=new Set(Object.keys(initialPrices));
+    let saveDirty=false;
+    function markDirty(){saveDirty=true;}
+    function parseMoney(value,fallback=0n){
+      try{return BigInt(value);}catch{return fallback;}
+    }
+    function updateAllShopPrices(){
+      for(const type of validMachines)
+        $(type.toLowerCase()+'Price').textContent=formatPrice(prices[type]);
+    }
+    function saveState(){
+      if(!saveDirty)return;
+      try{
+        const data={
+          version:1,money:String(money),
+          prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
+          hotbar:inventory.hotbar,backpack:inventory.backpack,
+          hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
+          backpackCosts:inventoryCosts.backpack.map(String),
+          placed:[...placed].map(([key,obj])=>[key,{type:obj.type,direction:obj.direction,enabled:obj.enabled,purchaseCost:String(obj.purchaseCost??0n)}]),
+          blobs:[...blobs.values()].map(b=>({id:b.id,key:b.key,worth:String(b.worth),shiny:!!b.shiny,state:b.state}))
+        };
+        localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+        saveDirty=false;
+      }catch(error){/* Private browsing or storage disabled: gameplay stays usable. */}
+    }
+    function loadSave(){
+      let raw;
+      try{raw=localStorage.getItem(SAVE_KEY);}catch{return;}
+      if(!raw)return;
+      try {
+        const data=JSON.parse(raw);
+        if(data?.version!==1)return;
+        money=parseMoney(data.money);
+        for(const [key,initial] of Object.entries(initialPrices))
+          prices[key]=data.prices?.[key]===undefined?initial:parseMoney(data.prices[key],initial);
+        for(let i=0;i<HOTBAR_SIZE;i++){
+          const type=data.hotbar?.[i],costs=data.hotbarCosts?.[i];
+          if(validMachines.has(type)&&Array.isArray(costs)&&costs.length>0){
+            inventory.hotbar[i]=type;
+            inventoryCosts.hotbar[i]=costs.slice(0,99).map(v=>parseMoney(v));
+          }
+        }
+        for(let i=0;i<BACKPACK_SIZE;i++){
+          const type=data.backpack?.[i];
+          if(validMachines.has(type)){
+            inventory.backpack[i]=type;
+            inventoryCosts.backpack[i]=parseMoney(data.backpackCosts?.[i]);
+          }
+        }
+        if(Array.isArray(data.placed))for(const entry of data.placed){
+          if(!Array.isArray(entry)||!/^\\d+,\\d+$/.test(entry[0])||!validMachines.has(entry[1]?.type))continue;
+          const obj=machine(entry[1].type,parseMoney(entry[1].purchaseCost));
+          obj.direction=((Math.trunc(Number(entry[1].direction)||0)%4)+4)%4;
+          obj.enabled=entry[1].enabled!==false;
+          placed.set(entry[0],obj);
+        }
+        const now=performance.now();
+        if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
+          if(!/^\\d+,\\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
+          const id=Number(b.id);
+          if(!Number.isInteger(id)||id<1||blobs.has(id))continue;
+          blobs.set(id,{id,key:b.key,worth:parseMoney(b.worth,1n),shiny:!!b.shiny,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
+          nextBlobId=Math.max(nextBlobId,id+1);
+        }
+        wireLayoutsDirty=true;
+      }catch(error){/* Ignore damaged or incomplete saved data. */}
+    }
+    function resetGame(){
+      document.body.classList.remove('money-holding');
+      document.body.classList.add('resetting');
+      money=0n;placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
+      for(let i=0;i<HOTBAR_SIZE;i++){
+        inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
+      }
+      for(let i=0;i<BACKPACK_SIZE;i++){
+        inventory.backpack[i]=null;inventoryCosts.backpack[i]=0n;
+      }
+      Object.assign(prices,initialPrices);
+      wireLayoutsDirty=true;wirePorts.clear();
+      deleteActive=false;rotateActive=false;selectedHotbar=null;selected=null;
+      clearDragStyles();dragging=null;
+      updateAllShopPrices();updateMoney();renderInventory();renderGrid();renderBlobs();
+      try{localStorage.removeItem(SAVE_KEY);}catch{}
+      saveDirty=false;showToast('Save reset');
+      setTimeout(()=>document.body.classList.remove('resetting'),950);
+    }
 
     // Use every available row and column of square tiles, while respecting the
     // actual header, money display, hotbar labels and iPad Safari safe area.
@@ -783,7 +871,7 @@
         selected = null;
         deleteActive = false;rotateActive=false;
         selectedHotbar = selectedHotbar !== location.index && inventory.hotbar[location.index] ? location.index : null;
-        renderInventory();
+        renderInventory();renderGrid();
         return;
       }
       // While the backpack is open, tapping two slots moves or swaps their items.
@@ -803,7 +891,7 @@
       rotateActive = false;
       selectedHotbar = null;
       selected = null;
-      renderInventory();
+      renderInventory();renderGrid();
     });
     $('rotateToggle').addEventListener('click',()=>{
       if($('backpackLayer').classList.contains('is-open'))setBackpack(false,false);
@@ -1058,6 +1146,38 @@
       }
     });
 
+    // Long press (3 seconds) the money display to clear local data on iPad or desktop.
+    const balance=$('balance');
+    let resetHold=null,holdTimer=null;
+    function cancelMoneyHold(){
+      clearTimeout(holdTimer);holdTimer=null;resetHold=null;
+      document.body.classList.remove('money-holding');
+    }
+    balance.addEventListener('pointerdown',event=>{
+      if($('shopLayer').classList.contains('is-open')||event.button!==0)return;
+      event.preventDefault();
+      cancelMoneyHold();
+      resetHold={id:event.pointerId,x:event.clientX,y:event.clientY};
+      document.body.classList.add('money-holding');
+      try{balance.setPointerCapture(event.pointerId);}catch{}
+      holdTimer=setTimeout(()=>{
+        if(resetHold && !$('shopLayer').classList.contains('is-open')){
+          cancelMoneyHold();resetGame();
+        }
+      },3000);
+    });
+    balance.addEventListener('pointermove',event=>{
+      if(resetHold?.id===event.pointerId && Math.hypot(event.clientX-resetHold.x,event.clientY-resetHold.y)>16)cancelMoneyHold();
+    });
+    for(const name of ['pointerup','pointercancel','lostpointercapture'])balance.addEventListener(name,cancelMoneyHold);
+    balance.addEventListener('contextmenu',event=>event.preventDefault());
+    setInterval(saveState,1200);
+    window.addEventListener('pagehide',saveState);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden')saveState();
+    });
+    loadSave();
+    updateAllShopPrices();
     updateMoney();
     renderInventory();
     fitFactoryGrid();
