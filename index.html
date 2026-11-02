@@ -755,6 +755,8 @@
     }
     function canOccupy(key,type,direction,ignore=new Set()){
       const positions=type==='LaserCutter'?laserKeys(key,direction):[key];
+      // A splitter can only cover an installed conveyor, never an empty tile.
+      if(type==='Splitter')return positions.every(pos=>pos&&(placed.get(pos)?.type==='Conveyor'||ignore.has(pos)));
       return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
     }
     function placeLaserParts(key,obj){
@@ -768,9 +770,14 @@
     function removeMachine(key){
       const root=rootKey(key),obj=placed.get(root);
       if(!obj)return null;
-      for(const pos of machineKeys(root,obj)) {
-        placed.delete(pos);
-        for(const [id,blob] of blobs)if(blob.key===pos)blobs.delete(id);
+      if(obj.type==='Splitter'){
+        // Refund only the splitter; return the conveyor underneath intact.
+        placed.set(root,obj.underConveyor??machine('Conveyor'));
+      }else{
+        for(const pos of machineKeys(root,obj)){
+          placed.delete(pos);
+          for(const [id,blob] of blobs)if(blob.key===pos)blobs.delete(id);
+        }
       }
       wireLayoutsDirty=true;markDirty();return {root,obj};
     }
@@ -791,6 +798,16 @@
         showToast('Space occupied');return false;
       }
       if(root===to)return true;
+      if(obj.type==='Splitter'){
+        // Keep the original belt when relocating the splitter attachment.
+        const newBelt=placed.get(to);
+        placed.set(root,obj.underConveyor??machine('Conveyor'));
+        obj.underConveyor=newBelt;
+        obj.direction=newBelt.direction;
+        placed.set(to,obj);
+        for(const blob of blobs.values())if(blob.key===root)blob.key=to;
+        wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
+      }
       const old=machineKeys(root,obj),newPositions=obj.type==='LaserCutter'?laserKeys(to,obj.direction):[to];
       for(const pos of old)placed.delete(pos);
       placed.set(to,obj);
@@ -923,10 +940,18 @@
     }
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
-      if (!type || !canOccupy(key,type,1)) {if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');return;}
+      if (!type || !canOccupy(key,type,1)) {
+        if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');
+        if(type==='Splitter')showToast('Place Splitter on a conveyor belt');
+        return;
+      }
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
       const obj=machine(type,cost);
+      if(type==='Splitter'){
+        obj.underConveyor=placed.get(key);
+        obj.direction=obj.underConveyor.direction;
+      }
       placed.set(key,obj);
       if(type==='LaserCutter')placeLaserParts(key,obj);
       wireLayoutsDirty=true;
@@ -1157,7 +1182,7 @@
       if (target && !sameLocation(dragging.from, target)) target.node.classList.add('drag-over');
       else if (dragging.from.zone === 'hotbar') {
         const cellIndex = gridAt(event.clientX, event.clientY);
-        if (cellIndex !== null && !placed.has(cellKey(cellIndex))) $('factoryGrid').children[cellIndex].classList.add('place-over');
+        if (cellIndex !== null && canOccupy(cellKey(cellIndex),dragging.item,1)) $('factoryGrid').children[cellIndex].classList.add('place-over');
       }
     }
     function pointerEnded(event) {
