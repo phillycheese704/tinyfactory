@@ -60,6 +60,8 @@
     .item-art.lasercutter { background:#ffe3e8; }
     .item-art.advanceddropper { background:#fff0d5; }
     .item-art.splitter { background:#e6ecff; }
+    .item-art.upgraded { background:#f1ebff; }
+    .machine-icon.upgraded .upgrade-core { animation:glow 1.3s ease-in-out infinite; transform-origin:32px 28px; }
     .shop-tabs { display:flex; gap:8px; padding:10px clamp(20px,3.5vw,48px) 0; overflow-x:auto; scrollbar-width:thin; flex-shrink:0; }
     .shop-tab { flex:0 0 auto;border:2px solid #292929;background:#fff;border-radius:11px;padding:9px 15px;cursor:pointer;font-weight:800; }
     .shop-tab[aria-selected="true"] { background:#ffe28b;box-shadow:2px 3px 0 #292929; }
@@ -284,7 +286,8 @@
         <button type="button" class="item" id="buyCryoChamber" data-category="Processing"><span class="item-art cryochamber"></span><span class="item-bottom"><span class="item-name">Cryo Chamber</span><span class="price" id="cryochamberPrice">$750</span></span></button>
         <button type="button" class="item" id="buyLaserCutter" data-category="Processing"><span class="item-art lasercutter"></span><span class="item-bottom"><span class="item-name">Laser Cutter</span><span class="price" id="lasercutterPrice">$300</span></span></button>
         <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">$200</span></span></button>
-        <button type="button" class="item" id="buySplitter" data-category="Transport"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$50</span></span></button>
+        <button type="button" class="item" id="buySplitter" data-category="Transport" title="Place onto an existing conveyor belt"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$50</span></span></button>
+        <button type="button" class="item" id="buyUpgraded" data-category="Processing" title="Upgrade each passing blob to the next quality tier"><span class="item-art upgraded"></span><span class="item-bottom"><span class="item-name">Upgraded</span><span class="price" id="upgradedPrice">$500</span></span></button>
       </div>
     </section>
   </div>
@@ -343,7 +346,7 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:50n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:50n,Upgraded:500n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -576,6 +579,13 @@
         <rect x="7" y="9" width="50" height="38" rx="8" fill="#f5b9c3" ${stroke}/>
         <rect x="17" y="16" width="30" height="24" rx="6" fill="#cf5269" stroke="#8e2a40" stroke-width="2.5"/>
         <circle cx="32" cy="28" r="7" fill="#ff294b"/><path d="M0 28h9m46 0h9" stroke="#e84965" stroke-width="6"/></g>`);
+      if (type === 'Upgraded') return frame(`<rect x="6" y="8" width="52" height="40" rx="11" fill="#e3d5ff" ${stroke}/>
+        <path d="M0 28h14m36 0h14" stroke="#8969bd" stroke-width="8" stroke-linecap="round"/>
+        <rect x="13" y="14" width="38" height="28" rx="8" fill="#faf6ff" stroke="#9f7bd0" stroke-width="2.4"/>
+        <g class="upgrade-core">
+          <path d="M32 15l5.2 9.3 10.3 3.7-10.3 3.7-5.2 9.3-5.2-9.3L16.5 28l10.3-3.7z" fill="#aa74e6" stroke="#613c91" stroke-width="2"/>
+          <path d="M32 34V21m-5 5 5-5 5 5" stroke="#fff7ff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>`);
       if (type === 'Splitter') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
         <rect x="6" y="7" width="52" height="42" rx="11" fill="#dce5ff" ${stroke}/>
         <path d="M7 28h25m0 0 19-14m-19 14 19 14" stroke="#7a83c5" stroke-width="7" fill="none" stroke-linecap="round"/>
@@ -731,7 +741,7 @@
         wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
-    const processorTypes=new Set(['Purifier','Furnace','CryoChamber']);
+    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','CryoChamber']);
     function laserKeys(center,direction){
       return [neighbor(center,(direction+2)%4),center,neighbor(center,direction)];
@@ -821,7 +831,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -1021,7 +1031,7 @@
       renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
