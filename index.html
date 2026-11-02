@@ -685,28 +685,34 @@
       $('bagCount').textContent = `${inventory.backpack.filter(Boolean).length}/${BACKPACK_SIZE}`;
       $('deleteToggle').setAttribute('aria-pressed', String(deleteActive));
       $('deleteToggle').innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-delete"/></svg>${deleteActive ? '<span class="tool-label">Delete</span>' : ''}`;
+      $('rotateToggle').setAttribute('aria-pressed',String(rotateActive));
+      $('rotateToggle').innerHTML=`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M48 19a23 23 0 1 0 4 18" fill="none" stroke="#286399" stroke-width="5" stroke-linecap="round"/><path d="M46 7v16H30" fill="none" stroke="#286399" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>${rotateActive?'<span class="tool-label">Rotate</span>':''}`;
       const placing = selectedHotbar !== null && !!inventory.hotbar[selectedHotbar];
       document.body.classList.toggle('has-place-tool', placing);
       document.body.classList.toggle('delete-active', deleteActive);
       $('factoryGrid').querySelectorAll('.grid-cell').forEach(cell => { cell.tabIndex = placing || deleteActive ? 0 : -1; });
     }
-    function nextFreeSlot() {
-      for (const zone of ['hotbar', 'backpack']) {
-        const index = inventory[zone].indexOf(null);
-        if (index !== -1) return { zone, index };
-      }
-      return null;
+    function nextFreeSlot(item) {
+      for(let index=0;index<HOTBAR_SIZE;index++)
+        if(inventory.hotbar[index]===item && inventoryCosts.hotbar[index].length<99)return {zone:'hotbar',index};
+      const freeHotbar=inventory.hotbar.indexOf(null);
+      if(freeHotbar>=0)return {zone:'hotbar',index:freeHotbar};
+      const freeBag=inventory.backpack.indexOf(null);
+      return freeBag<0?null:{zone:'backpack',index:freeBag};
     }
     function purchase(item) {
-      const location=nextFreeSlot();
+      const location=nextFreeSlot(item);
       if(!location) {showToast('Inventory full');return;}
       const price=prices[item];
       if(money<price) {showToast('Not enough money');return;}
       money-=price;
       inventory[location.zone][location.index]=item;
-      inventoryCosts[location.zone][location.index]=price;
+      if(location.zone==='hotbar')inventoryCosts.hotbar[location.index].push(price);
+      else inventoryCosts.backpack[location.index]=price;
       if(item==='Dropper') prices[item]=price===0n?1n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
       if(item==='Conveyor') prices[item]=price===0n?50n:price>=250n?250n:price+50n;
+      if(item==='Purifier') prices[item]=price+25n>MAX_PRICE?MAX_PRICE:price+25n;
+      if(item==='Furnace') prices[item]=price*3n/2n>MAX_PRICE?MAX_PRICE:((price*3n+10n)/20n)*10n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
         // 1.25x, rounded upward to the next multiple of five.
@@ -714,29 +720,57 @@
         prices[item]=grown>MAX_PRICE?MAX_PRICE:((grown+4n)/5n)*5n;
       }
       $(`${item.toLowerCase()}Price`).textContent=formatPrice(prices[item]);
-      updateMoney();renderInventory();showToast('Bought '+item);
+      updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
     function sameLocation(a, b) { return !!a && !!b && a.zone === b.zone && a.index === b.index; }
-    function moveOrSwap(from, to) {
-      if (!from || !to || sameLocation(from, to) || !inventory[from.zone][from.index]) return;
-      const oldDestination = inventory[to.zone][to.index];
-      const oldDestinationCost = inventoryCosts[to.zone][to.index];
-      inventory[to.zone][to.index] = inventory[from.zone][from.index];
-      inventoryCosts[to.zone][to.index] = inventoryCosts[from.zone][from.index];
-      inventory[from.zone][from.index] = oldDestination;
-      inventoryCosts[from.zone][from.index] = oldDestinationCost;
-      selected = null;
-      renderInventory();
+    function moveOrSwap(from,to) {
+      if(!from||!to||sameLocation(from,to)||!inventory[from.zone][from.index])return;
+      const a=inventory[from.zone][from.index], b=inventory[to.zone][to.index];
+      const ac=from.zone==='hotbar'?inventoryCosts.hotbar[from.index]:null;
+      const bc=to.zone==='hotbar'?inventoryCosts.hotbar[to.index]:null;
+      if(from.zone==='hotbar' && to.zone==='hotbar') {
+        if(a===b && bc.length<99) {
+          const amount=Math.min(99-bc.length,ac.length);
+          bc.push(...ac.splice(0,amount));
+          if(!ac.length)inventory.hotbar[from.index]=null;
+        } else if(a!==b) {
+          [inventory.hotbar[from.index],inventory.hotbar[to.index]]=[b,a];
+          [inventoryCosts.hotbar[from.index],inventoryCosts.hotbar[to.index]]=[bc,ac];
+        }
+      } else if(from.zone==='backpack' && to.zone==='backpack') {
+        [inventory.backpack[from.index],inventory.backpack[to.index]]=[b,a];
+        [inventoryCosts.backpack[from.index],inventoryCosts.backpack[to.index]]=[inventoryCosts.backpack[to.index],inventoryCosts.backpack[from.index]];
+      } else if(from.zone==='backpack' && to.zone==='hotbar') {
+        if((!b||b===a) && bc.length<99) {
+          inventory.hotbar[to.index]=a;
+          bc.push(inventoryCosts.backpack[from.index]);
+          inventory.backpack[from.index]=null;inventoryCosts.backpack[from.index]=0n;
+        } else if(b!==a && bc.length===1) {
+          const originalBagCost=inventoryCosts.backpack[from.index];
+          inventory.backpack[from.index]=b;inventoryCosts.backpack[from.index]=bc[0];
+          inventory.hotbar[to.index]=a;inventoryCosts.hotbar[to.index]=[originalBagCost];
+        } else return;
+      } else if(from.zone==='hotbar' && to.zone==='backpack') {
+        if(!b) {
+          inventory.backpack[to.index]=a;inventoryCosts.backpack[to.index]=ac.pop();
+          if(!ac.length)inventory.hotbar[from.index]=null;
+        } else if(ac.length===1) {
+          const one=ac[0],other=inventoryCosts.backpack[to.index];
+          inventory.backpack[to.index]=a;inventoryCosts.backpack[to.index]=one;
+          inventory.hotbar[from.index]=b;inventoryCosts.hotbar[from.index]=[other];
+        } else return;
+      }
+      selected=null;markDirty();renderInventory();
     }
     function tapSlot(location) {
       if (!$('backpackLayer').classList.contains('is-open')) {
         if (location.zone !== 'hotbar') return;
         selected = null;
-        deleteActive = false;
+        deleteActive = false;rotateActive=false;
         selectedHotbar = selectedHotbar !== location.index && inventory.hotbar[location.index] ? location.index : null;
         renderInventory();
         return;
@@ -755,9 +789,16 @@
     $('deleteToggle').addEventListener('click', () => {
       if ($('backpackLayer').classList.contains('is-open')) setBackpack(false, false);
       deleteActive = !deleteActive;
+      rotateActive = false;
       selectedHotbar = null;
       selected = null;
       renderInventory();
+    });
+    $('rotateToggle').addEventListener('click',()=>{
+      if($('backpackLayer').classList.contains('is-open'))setBackpack(false,false);
+      rotateActive=!rotateActive;
+      deleteActive=false;selectedHotbar=null;selected=null;
+      renderInventory();renderGrid();
     });
     function locationAt(x, y) {
       const node = document.elementFromPoint(x, y)?.closest('.storage-slot');
@@ -975,8 +1016,8 @@
       document.body.classList.toggle('bag-open', open);
       selected = null;
       selectedHotbar = null;
-      deleteActive = false;
-      renderInventory();
+      deleteActive = false;rotateActive=false;
+      renderInventory();renderGrid();
       if (open) $('closeBackpack').focus();
       else if (restoreFocus) bagToggle.focus();
     }
