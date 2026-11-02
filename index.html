@@ -357,7 +357,7 @@
     const blobs = new Map(); // Each moving black dot has a unique ID.
     let nextBlobId = 1;
     let lastMovementAt = 0;
-    const MOVE_MS = 300;
+    const MOVE_MS = 250;
     const directions = [[-1,0],[0,1],[1,0],[0,-1]]; // up, right, down, left
     const toKey = (row, column) => `${row},${column}`;
     const coords = key => key.split(',').map(Number);
@@ -481,7 +481,9 @@
         for(const [key,initial] of Object.entries(initialPrices))
           prices[key]=data.prices?.[key]===undefined?initial:parseMoney(data.prices[key],initial);
         // New fixed-cost wires and logic blocks override prices in older saves.
-        for(const type of ['Wire','Splitter','Sorter'])prices[type]=10n;
+        for(const type of ['Wire','Splitter','Sorter']){
+          if(prices[type]!==10n){prices[type]=10n;markDirty();}
+        }
         // Older saves used a free first Advanced Dropper. Upgrade their next
         // purchase price while preserving the cost paid for already-owned items.
         if(data.pricingVersion!==2){
@@ -1712,7 +1714,7 @@
       }
       if(mustRender)renderGrid();
     }
-    setInterval(tickFactory,100);
+    setInterval(tickFactory,50);
 
     function setShop(open) {
       if (open && $('backpackLayer').classList.contains('is-open')) setBackpack(false, false);
