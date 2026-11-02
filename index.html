@@ -1202,7 +1202,7 @@
     function renderBlobs(){
       const layer=$('blobLayer');if(!layer)return;
       const visible=new Set();
-      const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',blue:'#4ac1ff',red:'#ff324f'};
+      const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',gold:'#f4c63f',diamond:'#8be7ff',blue:'#4ac1ff',red:'#ff324f'};
       for(const blob of blobs.values()){
         const [row,col]=coords(blob.key);
         if(row>=gridRows||col>=gridCols)continue;
@@ -1228,6 +1228,23 @@
         el.style.top=((row+.5)/gridRows*100)+'%';
       }
       layer.querySelectorAll('.blob').forEach(el=>{if(!visible.has(el.dataset.blob))el.remove();});
+    }
+    const blobTiers=[
+      {grade:'normal',color:'black',worth:1n},
+      {grade:'bronze',color:'bronze',worth:5n},
+      {grade:'silver',color:'silver',worth:15n},
+      {grade:'gold',color:'gold',worth:50n},
+      {grade:'diamond',color:'diamond',worth:100n}
+    ];
+    function upgradeBlob(blob){
+      const stage=blobTiers.findIndex(tier=>tier.grade===blob.grade);
+      const current=Math.max(0,stage<0?blobTiers.findIndex(tier=>tier.color===blob.color):stage);
+      const next=blobTiers[Math.min(current+1,blobTiers.length-1)];
+      blob.grade=next.grade;
+      // Never lower the value of a blob that already passed through multipliers.
+      if(blob.worth<next.worth)blob.worth=next.worth;
+      // A later upgrade is visible even if a previous Cryo made the blob blue.
+      blob.color=next.color;
     }
     function laserPipelineReady(center){
       const obj=placed.get(center);
@@ -1292,7 +1309,10 @@
         occupied.delete(previous);occupied.add(next);
         blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
-        if(reached?.type==='Purifier'){
+        if(reached?.type==='Upgraded'){
+          upgradeBlob(blob);
+          reached.pulseUntil=now+350;
+        } else if(reached?.type==='Purifier'){
           blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
         } else if(reached?.type==='Furnace'){
           blob.worth=(blob.worth*13n+5n)/10n;
