@@ -66,7 +66,7 @@
     .item-art.lasercutter { background:#ffe3e8; }
     .item-art.advanceddropper { background:#fff0d5; }
     .item-art.splitter { background:#e6ecff; }
-    .item-art.upgraded { background:#f1ebff; }
+    .item-art.upgrader { background:#f1ebff; }
     .item-art.particleaccelerator {background:#dddcff}
     .item-art.superdropper {background:#ffefc7}
     .item-art.sorter {background:#d8fff0}
@@ -85,7 +85,7 @@
     .sorter-config select {background:white;border:2px solid #292929;border-radius:9px;padding:10px;font-size:16px}
     .sorter-actions {display:flex;gap:8px;justify-content:flex-end}
     .sorter-actions button{border:2px solid #292929;border-radius:9px;background:#ffe39b;padding:10px 18px;font-weight:800;cursor:pointer}
-    .machine-icon.upgraded .upgrade-core { animation:glow 1.3s ease-in-out infinite; transform-origin:32px 28px; }
+    .machine-icon.upgrader .upgrade-core { animation:glow 1.3s ease-in-out infinite; transform-origin:32px 28px; }
     .shop-tabs { display:flex; gap:8px; padding:10px clamp(20px,3.5vw,48px) 0; overflow-x:auto; scrollbar-width:thin; flex-shrink:0; }
     .shop-tab { flex:0 0 auto;border:2px solid #292929;background:#fff;border-radius:11px;padding:9px 15px;cursor:pointer;font-weight:800; }
     .shop-tab[aria-selected="true"] { background:#ffe28b;box-shadow:2px 3px 0 #292929; }
@@ -313,7 +313,7 @@
         <button type="button" class="item" id="buyLaserCutter" data-category="Processing"><span class="item-art lasercutter"></span><span class="item-bottom"><span class="item-name">Laser Cutter</span><span class="price" id="lasercutterPrice">$300</span></span></button>
         <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">$200</span></span></button>
         <button type="button" class="item" id="buySplitter" data-category="Transport" title="Place onto an existing conveyor belt"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$10</span></span></button>
-        <button type="button" class="item" id="buyUpgraded" data-category="Processing" title="Upgrade each passing blob to the next quality tier"><span class="item-art upgraded"></span><span class="item-bottom"><span class="item-name">Upgraded</span><span class="price" id="upgradedPrice">$500</span></span></button>
+        <button type="button" class="item" id="buyUpgrader" data-category="Processing" title="Upgrade each passing blob to the next quality tier"><span class="item-art upgrader"></span><span class="item-bottom"><span class="item-name">Upgrader</span><span class="price" id="upgraderPrice">$500</span></span></button>
         <button type="button" class="item" id="buyParticleAccelerator" data-category="Processing" title="3×3 powered batch accelerator"><span class="item-art particleaccelerator"></span><span class="item-bottom"><span class="item-name">Particle Accelerator</span><span class="price" id="particleacceleratorPrice">$1B</span></span></button>
         <button type="button" class="item" id="buySuperDropper" data-category="Production"><span class="item-art superdropper"></span><span class="item-bottom"><span class="item-name">Super Dropper</span><span class="price" id="superdropperPrice">$5K</span></span></button>
         <button type="button" class="item" id="buySorter" data-category="Transport" title="Logic block: place on a conveyor"><span class="item-art sorter"></span><span class="item-bottom"><span class="item-name">Sorter</span><span class="price" id="sorterPrice">$10</span></span></button>
@@ -396,7 +396,7 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgraded:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -485,8 +485,18 @@
         const data=JSON.parse(raw);
         if(data?.version!==1)return;
         money=parseMoney(data.money);
+        // Retain existing machines, stacks, costs and shop price on rename.
+        const migrateType=type=>{
+          if(type==='Upgraded'){markDirty();return 'Upgrader';}
+          return type;
+        };
+        const savedPrices={...data.prices};
+        if(savedPrices.Upgrader===undefined&&savedPrices.Upgraded!==undefined){
+          savedPrices.Upgrader=savedPrices.Upgraded;
+          markDirty();
+        }
         for(const [key,initial] of Object.entries(initialPrices))
-          prices[key]=data.prices?.[key]===undefined?initial:parseMoney(data.prices[key],initial);
+          prices[key]=savedPrices[key]===undefined?initial:parseMoney(savedPrices[key],initial);
         // New fixed-cost wires and logic blocks override prices in older saves.
         for(const type of ['Wire','Splitter','Sorter']){
           if(prices[type]!==10n){prices[type]=10n;markDirty();}
@@ -500,22 +510,22 @@
           markDirty();
         }
         for(let i=0;i<HOTBAR_SIZE;i++){
-          const type=data.hotbar?.[i],costs=data.hotbarCosts?.[i];
+          const type=migrateType(data.hotbar?.[i]),costs=data.hotbarCosts?.[i];
           if(validMachines.has(type)&&Array.isArray(costs)&&costs.length>0){
             inventory.hotbar[i]=type;
             inventoryCosts.hotbar[i]=costs.slice(0,99).map(v=>parseMoney(v));
           }
         }
         for(let i=0;i<BACKPACK_SIZE;i++){
-          const type=data.backpack?.[i];
+          const type=migrateType(data.backpack?.[i]);
           if(validMachines.has(type)){
             inventory.backpack[i]=type;
             inventoryCosts.backpack[i]=parseMoney(data.backpackCosts?.[i]);
           }
         }
         if(Array.isArray(data.placed))for(const entry of data.placed){
-          if(!Array.isArray(entry)||!/^\d+,\d+$/.test(entry[0])||!validMachines.has(entry[1]?.type))continue;
-          const obj=machine(entry[1].type,parseMoney(entry[1].purchaseCost));
+          if(!Array.isArray(entry)||!/^\d+,\d+$/.test(entry[0])||!validMachines.has(migrateType(entry[1]?.type)))continue;
+          const obj=machine(migrateType(entry[1].type),parseMoney(entry[1].purchaseCost));
           obj.direction=((Math.trunc(Number(entry[1].direction)||0)%4)+4)%4;
           obj.enabled=entry[1].enabled!==false;
           obj.shape=Math.max(0,Math.min(2,Number(entry[1].shape)||0));
@@ -722,7 +732,7 @@
         <path d="M27 28h24m-24 0 16-16" stroke="#4085a9" stroke-width="5" stroke-linecap="round"/>
         <circle cx="28" cy="28" r="8" fill="#ffeb78" stroke="#686341" stroke-width="2"/>
         <path d="M34 21l6-4m-6 20 6 4" stroke="#fff" stroke-width="2"/></g>`);
-      if (type === 'Upgraded') return frame(`<rect x="6" y="8" width="52" height="40" rx="11" fill="#e3d5ff" ${stroke}/>
+      if (type === 'Upgrader') return frame(`<rect x="6" y="8" width="52" height="40" rx="11" fill="#e3d5ff" ${stroke}/>
         <path d="M0 28h14m36 0h14" stroke="#8969bd" stroke-width="8" stroke-linecap="round"/>
         <rect x="13" y="14" width="38" height="28" rx="8" fill="#faf6ff" stroke="#9f7bd0" stroke-width="2.4"/>
         <g class="upgrade-core">
@@ -886,7 +896,7 @@
         wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
-    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded','Presser']);
+    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgrader','Presser']);
     const logicTypes=new Set(['Splitter','Sorter']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','SuperDropper','CryoChamber','ParticleAccelerator','AcceleratorPart']);
     const canGeneratePower=new Set(['Turbine','HydraulicPump','HydraulicPart']);
@@ -1078,7 +1088,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -1322,7 +1332,7 @@
       renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
@@ -1643,7 +1653,7 @@
         occupied.delete(previous);occupied.add(next);
         blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
-        if(reached?.type==='Upgraded'){
+        if(reached?.type==='Upgrader'){
           upgradeBlob(blob);
           reached.pulseUntil=now+350;
         } else if(reached?.type==='Purifier'){
