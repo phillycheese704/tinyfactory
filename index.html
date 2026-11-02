@@ -363,9 +363,29 @@
     function parseMoney(value,fallback=0n){
       try{return BigInt(value);}catch{return fallback;}
     }
+    // Keep the shop's All tab sorted by the CURRENT next-purchase price.
+    // Equal-price items retain their original shop order, and category tabs
+    // keep the familiar order instead of jumping around.
+    const shopCards = [...document.querySelectorAll('#shopItems .item')];
+    let activeShopCategory = 'All';
+    function renderShopCategory(category=activeShopCategory){
+      activeShopCategory=category;
+      document.querySelectorAll('.shop-tab').forEach(tab=>
+        tab.setAttribute('aria-selected',String(tab.dataset.tab===category)));
+      const ordered=shopCards.map((item,index)=>({item,index,type:item.id.slice(3)}));
+      if(category==='All'){
+        ordered.sort((a,b)=>prices[a.type]<prices[b.type]?-1:
+          prices[a.type]>prices[b.type]?1:a.index-b.index);
+      }
+      for(const {item} of ordered){
+        item.dataset.hidden=String(category!=='All'&&item.dataset.category!==category);
+        $('shopItems').appendChild(item);
+      }
+    }
     function updateAllShopPrices(){
       for(const type of validMachines)
         $(type.toLowerCase()+'Price').textContent=formatPrice(prices[type]);
+      renderShopCategory();
     }
     function saveState(){
       if(!saveDirty)return;
@@ -998,6 +1018,7 @@
         prices[item]=grown>MAX_PRICE?MAX_PRICE:((grown+4n)/5n)*5n;
       }
       $(`${item.toLowerCase()}Price`).textContent=formatPrice(prices[item]);
+      renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
     for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter']) {
@@ -1386,11 +1407,7 @@
       else if (restoreFocus) bagToggle.focus();
     }
     document.querySelectorAll('.shop-tab').forEach(tab=>tab.addEventListener('click',()=>{
-      const category=tab.dataset.tab;
-      document.querySelectorAll('.shop-tab').forEach(t=>t.setAttribute('aria-selected',String(t===tab)));
-      document.querySelectorAll('#shopItems .item').forEach(item=>{
-        item.dataset.hidden=String(category!=='All'&&item.dataset.category!==category);
-      });
+      renderShopCategory(tab.dataset.tab);
     }));
     $('shopToggle').addEventListener('click', () => setShop(true));
     $('closeShop').addEventListener('click', () => setShop(false));
