@@ -365,7 +365,7 @@
           }
         }
         if(Array.isArray(data.placed))for(const entry of data.placed){
-          if(!Array.isArray(entry)||!/^\\d+,\\d+$/.test(entry[0])||!validMachines.has(entry[1]?.type))continue;
+          if(!Array.isArray(entry)||!/^\d+,\d+$/.test(entry[0])||!validMachines.has(entry[1]?.type))continue;
           const obj=machine(entry[1].type,parseMoney(entry[1].purchaseCost));
           obj.direction=((Math.trunc(Number(entry[1].direction)||0)%4)+4)%4;
           obj.enabled=entry[1].enabled!==false;
@@ -373,7 +373,7 @@
         }
         const now=performance.now();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
-          if(!/^\\d+,\\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
+          if(!/^\d+,\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
           const id=Number(b.id);
           if(!Number.isInteger(id)||id<1||blobs.has(id))continue;
           blobs.set(id,{id,key:b.key,worth:parseMoney(b.worth,1n),shiny:!!b.shiny,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
@@ -472,16 +472,16 @@
       if (type === 'Turbine') return frame(`<path d="M9 11h46v37H9z" fill="#c8f2ff" ${stroke}/><rect x="13" y="15" width="38" height="29" rx="7" fill="#f7fdff" stroke="#7baab9" stroke-width="2"/>
         <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
         <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
-      if (type === 'Purifier') return frame(`<rect x="6" y="7" width="52" height="42" rx="11" fill="#d8f7e9" ${stroke}/>
+      if (type === 'Purifier') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)"><rect x="6" y="7" width="52" height="42" rx="11" fill="#d8f7e9" ${stroke}/>
         <path d="M0 29h13M51 29h13" stroke="#2b9b7f" stroke-width="7" stroke-linecap="round"/>
         <rect x="14" y="13" width="36" height="30" rx="8" fill="#fcfffb" stroke="#60ad91" stroke-width="2.3"/>
         <g class="purifier-spark"><path d="M32 15l4.2 10 10 3-10 3-4.2 11-4-11-10-3 10-3z" fill="#69d6a5" stroke="#2a936c" stroke-width="1.5"/></g>
-        <circle cx="19" cy="16" r="2.4" fill="#c0fae0"/>`);
-      if (type === 'Furnace') return frame(`<rect x="5" y="8" width="54" height="41" rx="10" fill="#f6bd8f" ${stroke}/>
+        <circle cx="19" cy="16" r="2.4" fill="#c0fae0"/></g>`);
+      if (type === 'Furnace') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)"><rect x="5" y="8" width="54" height="41" rx="10" fill="#f6bd8f" ${stroke}/>
         <path d="M0 29h11M53 29h11" stroke="#aa623d" stroke-width="7" stroke-linecap="round"/>
         <rect x="14" y="12" width="36" height="33" rx="7" fill="#5a3f38" stroke="#7c4029" stroke-width="2"/>
         <g class="furnace-flame"><path d="M32 17c6 9 12 11 8 19-3 8-14 10-19 2-5-7 1-13 4-18 1 6 4 8 7-3z" fill="#ff9c36" stroke="#a74d19" stroke-width="1.5"/><path d="M32 27c3 4 5 8 3 11-3 5-9 2-7-3z" fill="#ffe36c"/></g>
-        <path d="M15 48v5m34-5v5" ${stroke}/>`);
+        <path d="M15 48v5m34-5v5" ${stroke}/></g>`);
       if (type === 'Wire') {
         // Connection drawing follows the actual blue-input/red-output route.
         // Both sockets sit at tile edges; a rounded curve joins perpendicular sides.
