@@ -79,6 +79,7 @@
     .machine-icon.lasercutter .laser-beam{animation:laser-pulse .65s ease-in-out infinite}
     @keyframes laser-pulse{50%{opacity:.4;stroke-width:10}}
     .machine-icon.splitter .splitter-led{animation:glow .9s ease-in-out infinite}
+    .machine-icon.splitter .belt-stripes{animation:roll .65s linear infinite}
     .machine-icon.advanceddropper .plunger{animation:plunge 1s ease-in-out infinite;transform-origin:32px 22px}
     .power-mark{position:absolute;left:1px;bottom:0;font-size:clamp(8px,.85vw,11px);color:#ae7b11;background:#fff8d8;border-radius:3px;pointer-events:none;font-weight:900}
     .item-art svg { width: 58px; height: 53px; }
@@ -399,7 +400,15 @@
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
           backpackCosts:inventoryCosts.backpack.map(String),
-          placed:[...placed].filter(([,obj])=>obj.type!=='LaserPart').map(([key,obj])=>[key,{type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n)}]),
+          placed:[...placed].filter(([,obj])=>obj.type!=='LaserPart').map(([key,obj])=>[key,{
+            type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
+            manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
+            underConveyor:obj.type==='Splitter'&&obj.underConveyor?{
+              direction:obj.underConveyor.direction,
+              purchaseCost:String(obj.underConveyor.purchaseCost??0n),
+              manuallyRotated:!!obj.underConveyor.manuallyRotated
+            }:undefined
+          }]),
           blobs:[...blobs.values()].map(b=>({id:b.id,key:b.key,worth:String(b.worth),shiny:!!b.shiny,ember:!!b.ember,color:b.color??'black',neon:!!b.neon,grade:b.grade??'normal',entryDir:b.entryDir??null,state:b.state}))
         };
         localStorage.setItem(SAVE_KEY,JSON.stringify(data));
@@ -445,6 +454,14 @@
           obj.enabled=entry[1].enabled!==false;
           obj.shape=Math.max(0,Math.min(2,Number(entry[1].shape)||0));
           obj.manuallyRotated=!!entry[1].manuallyRotated;
+          if(obj.type==='Splitter'){
+            // Older saves may contain freestanding splitters. Supply a free
+            // conveyor underneath them so they behave like belt attachments.
+            const savedBelt=entry[1].underConveyor;
+            obj.underConveyor=machine('Conveyor',parseMoney(savedBelt?.purchaseCost));
+            obj.underConveyor.direction=savedBelt?((Number(savedBelt.direction)||0)+4)%4:obj.direction;
+            obj.underConveyor.manuallyRotated=!!savedBelt?.manuallyRotated;
+          }
           placed.set(entry[0],obj);
         }
         // Restore the two outer tiles of each saved three-tile laser machine.
@@ -587,8 +604,10 @@
           <path d="M32 34V21m-5 5 5-5 5 5" stroke="#fff7ff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         </g>`);
       if (type === 'Splitter') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
-        <rect x="6" y="7" width="52" height="42" rx="11" fill="#dce5ff" ${stroke}/>
-        <path d="M7 28h25m0 0 19-14m-19 14 19 14" stroke="#7a83c5" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <rect x="6" y="7" width="52" height="42" rx="11" fill="#d3f1df" ${stroke}/>
+        <path d="M1 28H62" stroke="#4e9773" stroke-width="11" stroke-linecap="round"/>
+        <path class="belt-stripes" d="M2 28H62" stroke="#ebebaa" stroke-width="5" stroke-dasharray="7 8"/>
+        <path d="M7 28h25m0 0 19-14m-19 14 19 14" stroke="#6779bb" stroke-width="6" fill="none" stroke-linecap="round"/>
         <path d="m26 23 6 5-6 5m19-23 6 4-7 4m0 18 7 6-7 4" fill="none" stroke="#3b4e96" stroke-width="2"/>
         <circle class="splitter-led" cx="32" cy="28" r="5" fill="#ffe287"/></g>`);
       if (type === 'Wire' && shape > 0) {
