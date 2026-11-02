@@ -126,7 +126,7 @@
     body.money-holding #balance::before {opacity:1;animation:hold-progress 3s linear forwards;}
     body.resetting #balance {animation:reset-pop .85s ease-in-out;}
     body.resetting .world::after {content:'';position:fixed;left:50%;top:50%;width:14vmin;height:14vmin;border:9px solid #ffe18c;border-radius:50%;pointer-events:none;z-index:12;animation:reset-wave .9s ease-out forwards; }
-    body:not(.has-place-tool):not(.dragging-to-grid):not(.delete-active) .grid-cell:not(.occupied) { pointer-events:none; }
+    body:not(.has-place-tool):not(.dragging-to-grid):not(.delete-active):not(.move-active) .grid-cell:not(.occupied) { pointer-events:none; }
     body.move-active .grid-cell:not(.occupied){pointer-events:auto;}
     .grid-cell.occupied { pointer-events:auto; }
     .grid-cell.occupied.is-powered { box-shadow:inset 0 0 0 1px #ffd34e,0 0 6px #ffe08b; }
@@ -885,7 +885,7 @@
     }
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
-      if (!type || !canOccupy(key,type,1)) {if(type==='LaserCutter')showToast('Laser Cutter needs 3 tiles');return;}
+      if (!type || !canOccupy(key,type,1)) {if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');return;}
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
       const obj=machine(type,cost);
