@@ -835,19 +835,37 @@
       for(const blob of blobs.values())if(translations.has(blob.key))blob.key=translations.get(blob.key);
       wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
     }
+    function isBeltTile(key){
+      const type=key&&placed.get(key)?.type;
+      return type==='Conveyor'||type==='Splitter';
+    }
+    function beltFeeds(from,to){
+      const machine=from&&placed.get(from);
+      if(!machine)return false;
+      if(machine.type==='Conveyor')return neighbor(from,machine.direction)===to;
+      if(machine.type==='Splitter')
+        return [machine.direction,(machine.direction+1)%4].some(dir=>neighbor(from,dir)===to);
+      return false;
+    }
+    function beltCanContinue(beltKey,from){
+      if(!isBeltTile(beltKey))return false;
+      const machine=placed.get(beltKey);
+      const exits=machine.type==='Splitter'?[machine.direction,(machine.direction+1)%4]:[machine.direction];
+      return exits.some(dir=>neighbor(beltKey,dir)!==from && neighbor(beltKey,dir)!==null);
+    }
     function processorExit(key,obj,fromKey=null) {
       if(!obj||!processorTypes.has(obj.type))return null;
       // Input may come from any side if its conveyor faces this machine.
       const ins=[];
       for(let dir=0;dir<4;dir++){
-        const neighborKey=neighbor(key,dir),machine=neighborKey&&placed.get(neighborKey);
-        if(machine?.type==='Conveyor' && machine.direction===(dir+2)%4)ins.push(neighborKey);
+        const neighborKey=neighbor(key,dir);
+        if(beltFeeds(neighborKey,key))ins.push(neighborKey);
       }
       if(!ins.length || (fromKey&&!ins.includes(fromKey)))return null;
       const exits=[];
       for(let dir=0;dir<4;dir++){
         const next=neighbor(key,dir);
-        if(next&&placed.get(next)?.type==='Conveyor'&&placed.get(next).direction!==(dir+2)%4&&(!fromKey||next!==fromKey)&&!ins.every(k=>k===next))
+        if(next&&isBeltTile(next)&&beltCanContinue(next,key)&&(!fromKey||next!==fromKey)&&!ins.every(k=>k===next))
           exits.push({key:next,dir});
       }
       const candidates=exits.filter(x=>ins.some(k=>k!==x.key));
@@ -863,7 +881,7 @@
         if (['Dropper','AdvancedDropper'].includes(prior?.type) && prior.direction === (dir+2)%4) return dir;
         if (processorTypes.has(prior?.type) && processorExit(near,prior)===key) return dir;
         if(prior?.type==='LaserPart' && prior.segment==='out')return dir;
-        if(prior?.type==='Splitter')return dir;
+        if(prior?.type==='Splitter'&&beltFeeds(near,key))return dir;
       }
       return (direction+2)%4;
     }
@@ -1297,7 +1315,7 @@
       if(!parts[0]||!parts[2])return false;
       const before=neighbor(parts[0],(obj.direction+2)%4);
       const after=neighbor(parts[2],obj.direction);
-      return placed.get(before)?.type==='Conveyor'&&placed.get(before)?.direction===obj.direction&&placed.get(after)?.type==='Conveyor'&&placed.get(after)?.direction!==((obj.direction+2)%4);
+      return beltFeeds(before,parts[0])&&isBeltTile(after)&&beltCanContinue(after,parts[2]);
     }
     function canFeedConveyor(from,to,direction){
       const target=placed.get(to);
