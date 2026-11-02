@@ -554,7 +554,7 @@
         <path d="m26 23 6 5-6 5m19-23 6 4-7 4m0 18 7 6-7 4" fill="none" stroke="#3b4e96" stroke-width="2"/>
         <circle class="splitter-led" cx="32" cy="28" r="5" fill="#ffe287"/></g>`);
       if (type === 'Wire' && shape > 0) {
-        const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4,(direction+3)%4];
+        const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4];
         const input=incoming==null?(direction+2)%4:incoming;
         const ports=[...new Set([...outputs,input])];
         const edge=d=>[[32,0],[64,28],[32,56],[0,28]][d];
@@ -699,7 +699,7 @@
       for(const [key,obj] of placed)if(obj.type==='Wire'&&obj.shape>0){
         const inputDir=(obj.direction+2)%4;
         const outputs=obj.shape===2?[0,1,2,3].filter(d=>d!==inputDir):
-          [obj.direction,(obj.direction+1)%4,(obj.direction+3)%4].filter(d=>d!==inputDir);
+          [obj.direction,(obj.direction+1)%4];
         wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
@@ -1276,66 +1276,79 @@
       if(changed)markDirty();
       renderBlobs();
     }
-    // Blue receives from a turbine or the previous wire's red end; red
-    // forwards to the next wire's blue end or a dropper, including 90° bends.
-    function deliverPower(sourceKey,now) {
+    // Turbines emit one short-lived charge. Separate pulses accumulate up to
+    // 100 per machine; each charge expires three seconds after being produced.
+    function powerLevel(obj,now=performance.now()){
+      return Math.min(100,obj?.charges?.filter(t=>t>now).length||0);
+    }
+    function deliverPower(sourceKey,now){
       rebuildWireLayouts();
       const queue=[],visited=new Set(),targets=[];
-      for(let dir=0;dir<4;dir++) {
+      for(let dir=0;dir<4;dir++){
         const key=neighbor(sourceKey,dir),obj=key&&placed.get(key);
-        const ports=key&&wirePorts.get(key);
-        if(obj?.type==='Wire' && ports?.inputDir===(dir+2)%4)
+        const ports=wirePorts.get(key);
+        if(obj?.type==='Wire'&&ports?.inputDir===(dir+2)%4)
           queue.push({key,path:[key]});
       }
-      while(queue.length) {
-        const current=queue.shift(),{key,path}=current;
+      while(queue.length){
+        const {key,path}=queue.shift();
         if(visited.has(key))continue;
         const wire=placed.get(key),ports=wirePorts.get(key);
-        if(wire?.type!=='Wire' || !ports)continue;
+        if(wire?.type!=='Wire'||!ports)continue;
         visited.add(key);
-        const next=neighbor(key,ports.outputDir),obj=next&&placed.get(next);
-        if(obj?.type==='Dropper')targets.push({key:next,path});
-        if(obj?.type==='Wire' && wirePorts.get(next)?.inputDir===(ports.outputDir+2)%4 && !visited.has(next))
-          queue.push({key:next,path:[...path,next]});
+        const outputs=wire.shape>0?ports.dirs.filter(d=>d!==ports.inputDir):[ports.outputDir];
+        for(const dir of outputs){
+          const next=neighbor(key,dir),obj=next&&placed.get(next);
+          if(canReceivePower.has(obj?.type))targets.push({key:next,path});
+          else if(obj?.type==='Wire'&&wirePorts.get(next)?.inputDir===(dir+2)%4&&!visited.has(next))
+            queue.push({key:next,path:[...path,next]});
+        }
       }
       if(!targets.length)return;
-      const chosen=targets.sort((a,b)=>placed.get(a.key).poweredUntil-placed.get(b.key).poweredUntil)[0];
-      const dropper=placed.get(chosen.key);
-      dropper.poweredUntil=now+3000;
-      dropper.pulseUntil=now+250;
-      for(const key of chosen.path)placed.get(key).wireUntil=now+3000;
+      targets.sort((a,b)=>powerLevel(placed.get(a.key),now)-powerLevel(placed.get(b.key),now));
+      const chosen=targets[0],receiver=placed.get(chosen.key);
+      receiver.charges??=[];
+      receiver.charges=receiver.charges.filter(exp=>exp>now);
+      if(receiver.charges.length<100)receiver.charges.push(now+3000);
+      receiver.poweredUntil=now+3000;
+      receiver.pulseUntil=now+260;
+      for(const key of chosen.path)if(placed.get(key))placed.get(key).wireUntil=now+3000;
     }
-    function tickFactory() {
+    function tickFactory(){
       const now=performance.now();let mustRender=false;
-      for(const [key,obj] of placed) {
-        if(obj.type==='Turbine' && obj.enabled) {
-          if(now-obj.lastPower>=2500) {
+      for(const [key,obj] of placed){
+        if(obj.type==='Turbine'&&obj.enabled){
+          if(now-obj.lastPower>=2500){
             obj.lastPower+=Math.floor((now-obj.lastPower)/2500)*2500;
             obj.pulseUntil=now+260;
             deliverPower(key,now);mustRender=true;
           }
-          if(now-obj.lastUpkeep>=10000) {
+          if(now-obj.lastUpkeep>=10000){
             const cycles=Math.floor((now-obj.lastUpkeep)/10000);
             obj.lastUpkeep+=cycles*10000;
             money-=BigInt(cycles)*5n;updateMoney();markDirty();
           }
         }
-        if(obj.type==='Dropper' && obj.poweredUntil>now && now-obj.lastAuto>=1000) {
-          obj.lastAuto=now;
-          if(spawnBlob(key,now)) {
-            obj.pulseUntil=now+200;mustRender=true;
-          }
+        if(obj.charges?.length){
+          const prev=obj.charges.length;
+          obj.charges=obj.charges.filter(t=>t>now);
+          if(prev!==obj.charges.length)mustRender=true;
         }
-        if(obj.type==='Dropper' && obj.poweredUntil<=now && obj.poweredUntil>0) {
-          obj.poweredUntil=0;mustRender=true;
+        if(['Dropper','AdvancedDropper'].includes(obj.type)){
+          const count=powerLevel(obj,now);
+          if(count>0){
+            const interval=Math.max(300,1000-700*count/100);
+            if(now-obj.lastAuto>=interval){
+              if(spawnBlob(key,now)){obj.pulseUntil=now+200;mustRender=true;}
+              obj.lastAuto=now;
+            }
+          } else if(obj.poweredUntil){obj.poweredUntil=0;mustRender=true;}
         }
-        if(obj.type==='Wire' && obj.wireUntil>0 && obj.wireUntil<=now) {
+        if(obj.type==='Wire'&&obj.wireUntil>0&&obj.wireUntil<=now){
           obj.wireUntil=0;mustRender=true;
         }
       }
-      if(now-lastMovementAt>=MOVE_MS) {
-        lastMovementAt=now;moveBlobs(now);
-      }
+      if(now-lastMovementAt>=MOVE_MS){lastMovementAt=now;moveBlobs(now);}
       if(mustRender)renderGrid();
     }
     setInterval(tickFactory,100);
