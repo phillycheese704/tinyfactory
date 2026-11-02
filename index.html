@@ -433,6 +433,15 @@
         $(type.toLowerCase()+'Price').textContent=formatPrice(prices[type]);
       renderShopCategory();
     }
+    function serializeBlob(blob){
+      return {id:blob.id,key:blob.key,worth:String(blob.worth),shiny:!!blob.shiny,ember:!!blob.ember,
+        melted:!!blob.melted,plate:!!blob.plate,color:blob.color??'black',neon:!!blob.neon,
+        grade:blob.grade??'normal',fromKey:blob.fromKey??null,state:blob.state};
+    }
+    function reviveBlob(data){
+      return {...data,worth:parseMoney(data.worth,1n),shiny:!!data.shiny,ember:!!data.ember,
+        melted:!!data.melted,plate:!!data.plate};
+    }
     function saveState(){
       if(!saveDirty)return;
       try{
@@ -442,16 +451,20 @@
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
           backpackCosts:inventoryCosts.backpack.map(String),
-          placed:[...placed].filter(([,obj])=>obj.type!=='LaserPart').map(([key,obj])=>[key,{
+          placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart'].includes(obj.type)).map(([key,obj])=>[key,{
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
-            underConveyor:obj.type==='Splitter'&&obj.underConveyor?{
+            sortGrade:obj.sortGrade,sortDir:obj.sortDir,
+            batch:obj.type==='ParticleAccelerator'?obj.batch.map(serializeBlob):undefined,
+            pending:obj.type==='ParticleAccelerator'?obj.pending.map(serializeBlob):undefined,
+            batchRemaining:obj.type==='ParticleAccelerator'?obj.batchRemaining:undefined,
+            underConveyor:logicTypes.has(obj.type)&&obj.underConveyor?{
               direction:obj.underConveyor.direction,
               purchaseCost:String(obj.underConveyor.purchaseCost??0n),
               manuallyRotated:!!obj.underConveyor.manuallyRotated
             }:undefined
           }]),
-          blobs:[...blobs.values()].map(b=>({id:b.id,key:b.key,worth:String(b.worth),shiny:!!b.shiny,ember:!!b.ember,color:b.color??'black',neon:!!b.neon,grade:b.grade??'normal',entryDir:b.entryDir??null,state:b.state}))
+          blobs:[...blobs.values()].map(serializeBlob)
         };
         localStorage.setItem(SAVE_KEY,JSON.stringify(data));
         saveDirty=false;
@@ -467,6 +480,8 @@
         money=parseMoney(data.money);
         for(const [key,initial] of Object.entries(initialPrices))
           prices[key]=data.prices?.[key]===undefined?initial:parseMoney(data.prices[key],initial);
+        // New fixed-cost wires and logic blocks override prices in older saves.
+        for(const type of ['Wire','Splitter','Sorter'])prices[type]=10n;
         // Older saves used a free first Advanced Dropper. Upgrade their next
         // purchase price while preserving the cost paid for already-owned items.
         if(data.pricingVersion!==2){
@@ -496,7 +511,7 @@
           obj.enabled=entry[1].enabled!==false;
           obj.shape=Math.max(0,Math.min(2,Number(entry[1].shape)||0));
           obj.manuallyRotated=!!entry[1].manuallyRotated;
-          if(obj.type==='Splitter'){
+          if(logicTypes.has(obj.type)){
             // Older saves may contain freestanding splitters. Supply a free
             // conveyor underneath them so they behave like belt attachments.
             const savedBelt=entry[1].underConveyor;
@@ -504,16 +519,28 @@
             obj.underConveyor.direction=savedBelt?((Number(savedBelt.direction)||0)+4)%4:obj.direction;
             obj.underConveyor.manuallyRotated=!!savedBelt?.manuallyRotated;
           }
+          if(obj.type==='Sorter'){
+            obj.sortGrade=['normal','bronze','silver','gold','diamond'].includes(entry[1].sortGrade)?entry[1].sortGrade:'diamond';
+            obj.sortDir=Number.isInteger(entry[1].sortDir)?entry[1].sortDir:((obj.direction+1)%4);
+          }
+          if(obj.type==='ParticleAccelerator'){
+            obj.batch=Array.isArray(entry[1].batch)?entry[1].batch.slice(0,5).map(reviveBlob):[];
+            obj.pending=Array.isArray(entry[1].pending)?entry[1].pending.slice(0,20).map(reviveBlob):[];
+            obj.batchRemaining=Math.max(0,Math.min(3000,Number(entry[1].batchRemaining??3000)));
+            obj.batchLastAt=performance.now();
+          }
           placed.set(entry[0],obj);
         }
-        // Restore the two outer tiles of each saved three-tile laser machine.
-        for(const [key,obj] of [...placed])if(obj.type==='LaserCutter')placeLaserParts(key,obj);
+        for(const [key,obj] of [...placed]){
+          if(obj.type==='LaserCutter')placeLaserParts(key,obj);
+          if(obj.type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
+        }
         const now=performance.now();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
           if(!/^\d+,\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
           const id=Number(b.id);
           if(!Number.isInteger(id)||id<1||blobs.has(id))continue;
-          blobs.set(id,{id,key:b.key,worth:parseMoney(b.worth,1n),shiny:!!b.shiny,ember:!!b.ember,color:b.color||'black',neon:!!b.neon,grade:b.grade||'normal',entryDir:Number.isInteger(b.entryDir)?b.entryDir:null,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
+          blobs.set(id,{...reviveBlob(b),id,key:b.key,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
           nextBlobId=Math.max(nextBlobId,id+1);
         }
         wireLayoutsDirty=true;
@@ -768,7 +795,7 @@
           for(let d=0;d<4;d++) {
             const nearby=neighbor(key,d),type=nearby && placed.get(nearby)?.type;
             if(type==='Turbine')sources.push({wire:key,machine:nearby});
-            if(canReceivePower.has(type))sinks.push({wire:key,machine:nearby});
+            if(canReceivePower.has(type))sinks.push({wire:key,machine:rootKey(nearby)});
           }
         }
         let fullPath=null;
@@ -833,7 +860,7 @@
     }
     const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded','Presser']);
     const logicTypes=new Set(['Splitter','Sorter']);
-    const canReceivePower=new Set(['Dropper','AdvancedDropper','CryoChamber']);
+    const canReceivePower=new Set(['Dropper','AdvancedDropper','SuperDropper','CryoChamber','ParticleAccelerator','AcceleratorPart']);
     function acceleratorKeys(center){
       const [row,col]=coords(center),keys=[];
       for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
@@ -1067,9 +1094,11 @@
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
-        const signature=obj ? [obj.type,obj.direction,obj.shape,obj.enabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key].join('|') : '';
+        const root=rootKey(key),acc=placed.get(root);
+        const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):'';
+        const signature=obj ? [obj.type,obj.direction,obj.shape,obj.enabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:''):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
@@ -1550,7 +1579,7 @@
         const outputs=wire.shape>0?ports.dirs.filter(d=>d!==ports.inputDir):[ports.outputDir];
         for(const dir of outputs){
           const next=neighbor(key,dir),obj=next&&placed.get(next);
-          if(canReceivePower.has(obj?.type))targets.push({key:next,path});
+          if(canReceivePower.has(obj?.type))targets.push({key:rootKey(next),path});
           else if(obj?.type==='Wire'&&wirePorts.get(next)?.inputDir===(dir+2)%4&&!visited.has(next))
             queue.push({key:next,path:[...path,next]});
         }
