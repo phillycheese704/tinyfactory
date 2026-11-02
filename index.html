@@ -1407,17 +1407,26 @@
     document.addEventListener('pointercancel', pointerCancelled);
 
     // Blobs carry value, colour and processing effects along their journey.
+    function superDropGrade(power){
+      const pick=Math.random()*100;
+      if(power<=0)return pick<5?'bronze':pick<80?'silver':pick<95?'gold':'diamond';
+      const t=(Math.min(100,power)-1)/99;
+      const silver=76.6666667*(1-t)+40*t;
+      const gold=16.6666667*(1-t)+40*t;
+      return pick<silver?'silver':pick<silver+gold?'gold':'diamond';
+    }
     function spawnBlob(key, now=performance.now()){
       const dropper=placed.get(key);
-      if(!['Dropper','AdvancedDropper'].includes(dropper?.type)||
+      if(!['Dropper','AdvancedDropper','SuperDropper'].includes(dropper?.type)||
         [...blobs.values()].some(b=>b.key===key))return false;
-      const advanced=dropper.type==='AdvancedDropper';
-      const silver=advanced&&Math.random()<0.09544;
+      const superDrop=dropper.type==='SuperDropper',advanced=dropper.type==='AdvancedDropper';
+      const grade=superDrop?superDropGrade(powerLevel(dropper,now)):
+        advanced?(Math.random()<0.09544?'silver':'bronze'):'normal';
+      const values={normal:1n,bronze:5n,silver:15n,gold:50n,diamond:100n};
+      const colors={normal:'black',bronze:'bronze',silver:'silver',gold:'gold',diamond:'diamond'};
       const id=nextBlobId++;
-      blobs.set(id,{id,key,worth:advanced?(silver?15n:5n):1n,
-        shiny:false,ember:false,color:advanced?(silver?'silver':'bronze'):'black',
-        neon:false,grade:advanced?(silver?'silver':'bronze'):'normal',
-        entryDir:null,fromKey:null,state:'waiting',arrivedAt:now,collectAt:0});
+      blobs.set(id,{id,key,worth:values[grade],shiny:false,ember:false,melted:false,plate:false,
+        color:colors[grade],neon:false,grade,fromKey:null,state:'waiting',arrivedAt:now,collectAt:0});
       markDirty();renderBlobs();return true;
     }
     function renderBlobs(){
@@ -1440,6 +1449,7 @@
         el.classList.toggle('collecting',blob.state==='collecting');
         el.classList.toggle('icy',blob.color==='blue');
         el.classList.toggle('ember',!!blob.ember);
+        el.classList.toggle('plate',!!blob.plate);
         el.classList.toggle('lasered',!!blob.neon);
         const dot=el.querySelector('.blob-dot');
         const color=palette[blob.color]||palette.black;
@@ -1479,7 +1489,11 @@
     function canFeedConveyor(from,to,direction){
       const target=placed.get(to);
       if(!target)return false;
-      if(['Conveyor','Extractor','Splitter'].includes(target.type))return true;
+      if(['Conveyor','Extractor','Splitter','Sorter'].includes(target.type))return true;
+      if(target.type==='AcceleratorPart'&&acceleratorSide(target.parent,direction)===to&&acceleratorReady(target.parent)){
+        const machine=placed.get(target.parent);
+        return machine?.batch.length<5 && machine.pending.length===0;
+      }
       if(processorTypes.has(target.type))return !!processorExit(to,target,from);
       if(target.type==='LaserPart' && target.segment==='in' &&
          target.direction===direction && laserPipelineReady(target.parent))return true;
@@ -1509,7 +1523,25 @@
         }
         return null;
       }
-      if(['Dropper','AdvancedDropper'].includes(obj.type)){
+      if(obj.type==='Sorter'){
+        const forwards=obj.direction,side=obj.sortDir??((forwards+1)%4);
+        const chosen=obj.sortGrade===blob.grade?side:forwards;
+        const dirs=[chosen,chosen===forwards?side:forwards];
+        for(const dir of dirs){
+          const next=neighbor(blob.key,dir);
+          if(next&&next!==blob.fromKey&&canFeedConveyor(blob.key,next,dir))return next;
+        }
+        return null;
+      }
+      if(obj.type==='AcceleratorPart'){
+        const parent=placed.get(obj.parent);
+        if(obj.parent&&blob.key===acceleratorSide(obj.parent,parent.direction,true)){
+          const next=neighbor(blob.key,parent.direction);
+          return next&&isBeltTile(next)&&beltCanContinue(next,blob.key)?next:null;
+        }
+        return null;
+      }
+      if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj.type)){
         const next=neighbor(blob.key,obj.direction);
         return next&&canFeedConveyor(blob.key,next,obj.direction)?next:null;
       }
@@ -1526,6 +1558,17 @@
         if(now-blob.arrivedAt<MOVE_MS-25)continue;
         const next=blobDestination(blob);
         if(!next||occupied.has(next))continue;
+        const nextMachine=placed.get(next);
+        if(nextMachine?.type==='AcceleratorPart'){
+          const root=placed.get(nextMachine.parent);
+          if(!root||root.type!=='ParticleAccelerator'||root.batch.length>=5||root.pending.length)continue;
+          // A captured blob leaves the grid and becomes part of the batch.
+          root.batch.push({...blob});
+          root.batchLastAt=now;
+          root.pulseUntil=now+350;
+          blobs.delete(id);occupied.delete(blob.key);changed=true;
+          continue;
+        }
         const previous=blob.key;
         occupied.delete(previous);occupied.add(next);
         blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
@@ -1536,21 +1579,40 @@
         } else if(reached?.type==='Purifier'){
           blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
         } else if(reached?.type==='Furnace'){
-          blob.worth=(blob.worth*13n+5n)/10n;
-          blob.ember=true;reached.pulseUntil=now+350;
+          if(blob.grade==='bronze'){
+            blob.worth=(blob.worth*12n+5n)/10n;
+            blob.melted=true;blob.ember=true;
+          }else{
+            blob.worth=(blob.worth*13n+5n)/10n;
+            blob.ember=true;
+          }
+          reached.pulseUntil=now+350;
+        } else if(reached?.type==='Presser'){
+          blob.worth=blob.melted?(blob.worth*5n+1n)/2n:(blob.worth*145n+50n)/100n;
+          blob.plate=true;reached.pulseUntil=now+350;
         } else if(reached?.type==='CryoChamber'){
           const power=Math.min(100,reached.charges?.filter(t=>t>now).length||0);
           const multiplier=power?190+Math.round((power-1)*10/99):175;
           blob.worth=(blob.worth*BigInt(multiplier)+50n)/100n;
           blob.color='blue';reached.pulseUntil=now+350;
         } else if(reached?.type==='LaserCutter'){
-          blob.worth*=2n;blob.neon=true;
+          blob.worth*=blob.grade==='diamond'?3n:2n;blob.neon=true;
           if(blob.color==='black')blob.color='red';
           reached.pulseUntil=now+350;
         }
         if(reached?.type==='Extractor'){
           blob.state='collecting';blob.collectAt=now+350;
           reached.pulseUntil=now+350;
+        }
+      }
+      // Drain at most one finished batch blob per conveyor movement step.
+      for(const [key,obj] of placed)if(obj.type==='ParticleAccelerator'&&obj.pending.length&&acceleratorReady(key)){
+        const exit=acceleratorSide(key,obj.direction,true);
+        if(exit&&!occupied.has(exit)){
+          const next=obj.pending.shift();
+          const id=nextBlobId++;
+          blobs.set(id,{...next,id,key:exit,fromKey:key,state:'waiting',arrivedAt:now,collectAt:0});
+          occupied.add(exit);changed=true;
         }
       }
       if(changed)markDirty();
@@ -1616,15 +1678,33 @@
           obj.charges=obj.charges.filter(t=>t>now);
           if(prev!==obj.charges.length)mustRender=true;
         }
-        if(['Dropper','AdvancedDropper'].includes(obj.type)){
+        if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj.type)){
           const count=powerLevel(obj,now);
           if(count>0){
-            const interval=Math.max(300,1000-700*count/100);
+            const interval=obj.type==='SuperDropper'
+              ?300-50*(count-1)/99:Math.max(300,1000-700*count/100);
             if(now-obj.lastAuto>=interval){
               if(spawnBlob(key,now)){obj.pulseUntil=now+200;mustRender=true;}
               obj.lastAuto=now;
             }
           } else if(obj.poweredUntil){obj.poweredUntil=0;mustRender=true;}
+        }
+        if(obj.type==='ParticleAccelerator'){
+          const active=powerLevel(obj,now)>0&&acceleratorReady(key);
+          const elapsed=Math.max(0,now-obj.batchLastAt);
+          obj.batchLastAt=now;
+          if(active&&obj.batch.length===5&&!obj.pending.length){
+            obj.batchRemaining=Math.max(0,obj.batchRemaining-elapsed);
+            if(obj.batchRemaining===0){
+              const duplicate=Math.random()<.25;
+              const factor=duplicate?7n:10n;
+              obj.pending=obj.batch.flatMap(blob=>Array.from({length:duplicate?4:1},()=>({
+                ...blob,worth:blob.worth*factor
+              })));
+              obj.batch=[];obj.batchRemaining=3000;
+              obj.pulseUntil=now+500;markDirty();mustRender=true;
+            }else markDirty();
+          }
         }
         if(obj.type==='Wire'&&obj.wireUntil>0&&obj.wireUntil<=now){
           obj.wireUntil=0;mustRender=true;
