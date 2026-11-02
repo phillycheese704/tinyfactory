@@ -1706,10 +1706,58 @@
     // Deliver a source pulse through aligned blue-input/red-output wires.
     // A Hydraulic Pump supplies 15 charges per pulse; a Turbine supplies one.
     // Each charge lasts three seconds, and receivers cannot exceed 100 power.
+    // Hydraulic Pumps energize *every* physically connected wire, regardless
+    // of direction or junction shape. This includes dead ends, branches, and
+    // completely separate wire groups touching different edges of the same pump.
+    // The 15 units of generated power are shared across reachable consumers;
+    // energizing a wire does not consume one of those units.
+    function deliverHydraulicPower(sourceRoot,now,amount){
+      const source=placed.get(sourceRoot);
+      if(source?.type!=='HydraulicPump')return 0;
+      const queue=[],visited=new Set(),receivers=new Map();
+      for(const from of machineKeys(sourceRoot,source)){
+        if(!from)continue;
+        for(let dir=0;dir<4;dir++){
+          const next=neighbor(from,dir);
+          if(next&&placed.get(next)?.type==='Wire')queue.push(next);
+        }
+      }
+      for(let index=0;index<queue.length;index++){
+        const key=queue[index];
+        if(visited.has(key)||placed.get(key)?.type!=='Wire')continue;
+        visited.add(key);
+        const wire=placed.get(key);
+        wire.wireUntil=now+3000;
+        for(let dir=0;dir<4;dir++){
+          const next=neighbor(key,dir),obj=next&&placed.get(next);
+          if(obj?.type==='Wire'){
+            if(!visited.has(next))queue.push(next);
+          }else if(canReceivePower.has(obj?.type)){
+            const root=rootKey(next);
+            if(!receivers.has(root))receivers.set(root,placed.get(root));
+          }
+        }
+      }
+      const consumers=[...receivers.values()].filter(Boolean);
+      for(const consumer of consumers)
+        consumer.charges=(consumer.charges||[]).filter(exp=>exp>now);
+      let delivered=0;
+      for(let i=0;i<amount;i++){
+        consumers.sort((a,b)=>a.charges.length-b.charges.length);
+        const consumer=consumers.find(obj=>obj.charges.length<100);
+        if(!consumer)break;
+        consumer.charges.push(now+3000);
+        consumer.poweredUntil=now+3000;
+        consumer.pulseUntil=now+260;
+        delivered++;
+      }
+      return delivered;
+    }
     function deliverPower(sourceKey,now,amount=1){
       rebuildWireLayouts();
       const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
       if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
+      if(source.type==='HydraulicPump')return deliverHydraulicPower(sourceRoot,now,amount);
       const queue=[],visited=new Set(),targets=new Map();
       // Large generators expose power sockets from every outer tile.
       for(const from of machineKeys(sourceRoot,source)){
