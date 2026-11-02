@@ -1019,10 +1019,11 @@
     }
     function moveBlobs(now) {
       const occupied=new Set([...blobs.values()].map(b=>b.key));
+      let changed=false;
       for(const [id,blob] of blobs) {
         if(blob.state==='collecting') {
           if(now>=blob.collectAt) {
-            money+=blob.worth;updateMoney();blobs.delete(id);markDirty();
+            money+=blob.worth;updateMoney();blobs.delete(id);changed=true;
           }
           continue;
         }
@@ -1030,7 +1031,7 @@
         const next=blobDestination(blob);
         if(!next || occupied.has(next)) continue;
         occupied.delete(blob.key);occupied.add(next);
-        blob.key=next;blob.arrivedAt=now;
+        blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
         if(reached?.type==='Purifier') {
           blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
@@ -1044,7 +1045,8 @@
           placed.get(next).pulseUntil=now+350;
         }
       }
-      markDirty();renderBlobs();
+      if(changed)markDirty();
+      renderBlobs();
     }
     // Blue receives from a turbine or the previous wire's red end; red
     // forwards to the next wire's blue end or a dropper, including 90° bends.
