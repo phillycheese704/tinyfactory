@@ -294,7 +294,7 @@
     };
     // Store each item's checkout price, even when moved between the bag and hotbar.
     const inventoryCosts = {
-      hotbar: Array(HOTBAR_SIZE).fill(0n),
+      hotbar: Array.from({length:HOTBAR_SIZE},()=>[]),
       backpack: Array(BACKPACK_SIZE).fill(0n)
     };
     function resaleValue(purchaseCost) {
@@ -302,10 +302,12 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const prices = { Dropper: 0n, Conveyor: 0n, Extractor: 0n, Turbine: 50n, Wire: 50n };
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n};
+    const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
+    let rotateActive = false;
     let dragging = null;
     let toastTimer;
     // Automatic wire topology is recalculated only when a machine is placed, removed or rotated.
@@ -610,25 +612,27 @@
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
-        const signature=obj ? [obj.type,obj.direction,obj.enabled,output,incoming,powered].join('|') : '';
+        const signature=obj ? [obj.type,obj.direction,obj.enabled,output,incoming,powered,rotateActive].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
         cell.classList.toggle('is-powered',powered);
         cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
-        cell.title=obj ? (obj.type==='Conveyor'?'Tap to rotate 90°':obj.type==='Wire'?'Auto-connects around corners; tap to change preferred direction':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
+        cell.title=obj ? (rotateActive?'Tap to rotate 90°':obj.type==='Conveyor'?'Select rotate tool to turn':obj.type==='Wire'?'Auto-connects around corners':obj.type==='Dropper'?'Tap to create a blob':obj.type==='Turbine'?'Tap to switch on/off':obj.type) : 'Empty factory tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
       if (placed.has(key) || !type) return;
-      placed.set(key,machine(type, inventoryCosts.hotbar[hotbarIndex]));
+      const costs=inventoryCosts.hotbar[hotbarIndex];
+      const cost=costs.pop() ?? 0n;
+      placed.set(key,machine(type,cost));
       wireLayoutsDirty=true;
-      inventory.hotbar[hotbarIndex]=null;
-      inventoryCosts.hotbar[hotbarIndex]=0n;
-      selectedHotbar=null;deleteActive=false;
+      if(!costs.length) inventory.hotbar[hotbarIndex]=null;
+      selectedHotbar=null;deleteActive=false;rotateActive=false;
+      markDirty();
       renderGrid();renderInventory();
     }
     function useGridCell(index) {
@@ -640,15 +644,17 @@
           money += refund;
           updateMoney();
           showToast('Refunded $' + formatAmount(refund));
+          markDirty();
           wireLayoutsDirty=true;
           for(const [id,blob] of blobs) if(blob.key===key) blobs.delete(id);
           renderGrid();renderBlobs();
         }
       } else if(selectedHotbar!==null) {
         placeFromHotbar(index,selectedHotbar);
-      } else if (obj?.type==='Conveyor' || obj?.type==='Wire') {
+      } else if(rotateActive && obj) {
         obj.direction=(obj.direction+1)%4;
         wireLayoutsDirty=true;
+        markDirty();
         renderGrid();
       } else if (obj?.type==='Dropper') {
         if(now-obj.lastClick >= 500) {
@@ -658,6 +664,7 @@
       } else if (obj?.type==='Turbine') {
         obj.enabled=!obj.enabled;
         obj.lastPower=now;obj.lastUpkeep=now;
+        markDirty();
         renderGrid();
       }
     }
@@ -670,8 +677,9 @@
         button.classList.toggle('has-item', !!item);
         const isActive = zone === 'hotbar' && selectedHotbar === index && !deleteActive;
         button.classList.toggle('is-selected', isActive || !!selected && selected.zone === zone && selected.index === index);
-        button.innerHTML = `${item ? iconFor(item) : ''}${zone === 'hotbar' ? `<span class="slot-number">${index + 1}</span>` : ''}${isActive && item ? `<span class="slot-label">${item}</span>` : ''}`;
-        button.setAttribute('aria-label', `${zone === 'hotbar' ? 'Hotbar' : 'Backpack'} slot ${index + 1}, ${item || 'empty'}`);
+        const count=zone==='hotbar'?inventoryCosts.hotbar[index].length:(item?1:0);
+        button.innerHTML = `${item ? iconFor(item) : ''}${zone === 'hotbar' ? `<span class="slot-number">${index + 1}</span>` : ''}${count>1?`<span class="stack-count">x${count}</span>`:''}${isActive && item ? `<span class="slot-label">${item}</span>` : ''}`;
+        button.setAttribute('aria-label', `${zone === 'hotbar' ? 'Hotbar' : 'Backpack'} slot ${index + 1}, ${item || 'empty'}${count>1?' x'+count:''}`);
         button.title = item || `Empty ${zone} slot`;
       });
       $('bagCount').textContent = `${inventory.backpack.filter(Boolean).length}/${BACKPACK_SIZE}`;
