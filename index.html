@@ -1761,6 +1761,10 @@
             obj.lastPower+=Math.floor((now-obj.lastPower)/3000)*3000;
             obj.pulseUntil=now+350;
             deliverPower(key,now,15);
+            // Each 15-power generation burst has a $50 running cost.
+            money-=50n;
+            updateMoney();
+            markDirty();
             mustRender=true;
           }
         }
