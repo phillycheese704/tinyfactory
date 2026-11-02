@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tiny Factory">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
   <title>🏭 Tiny Factory</title>
   <style>
     :root {
@@ -1185,6 +1190,16 @@
     updateMoney();
     renderInventory();
     fitFactoryGrid();
+
+    // On hosted HTTPS sites (including GitHub Pages), cache this self-contained
+    // game so it can launch with no network after the initial online visit.
+    // Opening a downloaded index.html as file:// already works offline.
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .catch(() => { /* Offline installation unavailable; the game still runs. */ });
+      });
+    }
   </script>
 </body>
 </html>
