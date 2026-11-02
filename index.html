@@ -1693,14 +1693,22 @@
     function powerLevel(obj,now=performance.now()){
       return Math.min(100,obj?.charges?.filter(t=>t>now).length||0);
     }
-    function deliverPower(sourceKey,now){
+    // Deliver a source pulse through aligned blue-input/red-output wires.
+    // A Hydraulic Pump supplies 15 charges per pulse; a Turbine supplies one.
+    // Each charge lasts three seconds, and receivers cannot exceed 100 power.
+    function deliverPower(sourceKey,now,amount=1){
       rebuildWireLayouts();
-      const queue=[],visited=new Set(),targets=[];
-      for(let dir=0;dir<4;dir++){
-        const key=neighbor(sourceKey,dir),obj=key&&placed.get(key);
-        const ports=wirePorts.get(key);
-        if(obj?.type==='Wire'&&ports?.inputDir===(dir+2)%4)
-          queue.push({key,path:[key]});
+      const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
+      if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
+      const queue=[],visited=new Set(),targets=new Map();
+      // Large generators expose power sockets from every outer tile.
+      for(const from of machineKeys(sourceRoot,source)){
+        if(!from)continue;
+        for(let dir=0;dir<4;dir++){
+          const key=neighbor(from,dir),obj=key&&placed.get(key),ports=wirePorts.get(key);
+          if(obj?.type==='Wire' && ports?.inputDir===(dir+2)%4)
+            queue.push({key,path:[key]});
+        }
       }
       while(queue.length){
         const {key,path}=queue.shift();
@@ -1711,26 +1719,51 @@
         const outputs=wire.shape>0?ports.dirs.filter(d=>d!==ports.inputDir):[ports.outputDir];
         for(const dir of outputs){
           const next=neighbor(key,dir),obj=next&&placed.get(next);
-          if(canReceivePower.has(obj?.type))targets.push({key:rootKey(next),path});
-          else if(obj?.type==='Wire'&&wirePorts.get(next)?.inputDir===(dir+2)%4&&!visited.has(next))
+          if(canReceivePower.has(obj?.type)){
+            const target=rootKey(next);
+            if(!targets.has(target)||targets.get(target).length>path.length)
+              targets.set(target,path);
+          }else if(obj?.type==='Wire'&&wirePorts.get(next)?.inputDir===(dir+2)%4&&!visited.has(next))
             queue.push({key:next,path:[...path,next]});
         }
       }
-      if(!targets.length)return;
-      targets.sort((a,b)=>powerLevel(placed.get(a.key),now)-powerLevel(placed.get(b.key),now));
-      const chosen=targets[0],receiver=placed.get(chosen.key);
-      receiver.charges??=[];
-      receiver.charges=receiver.charges.filter(exp=>exp>now);
-      if(receiver.charges.length<100)receiver.charges.push(now+3000);
-      receiver.poweredUntil=now+3000;
-      receiver.pulseUntil=now+260;
-      for(const key of chosen.path)if(placed.get(key))placed.get(key).wireUntil=now+3000;
+      if(!targets.size)return 0;
+      const consumers=[...targets.keys()].map(key=>({key,obj:placed.get(key),path:targets.get(key)}))
+        .filter(x=>x.obj);
+      for(const target of consumers){
+        target.obj.charges=(target.obj.charges||[]).filter(exp=>exp>now);
+      }
+      let delivered=0;
+      for(let i=0;i<amount;i++){
+        // Distribute larger power bursts across reachable machines, favouring
+        // whichever currently has the least stored charge.
+        consumers.sort((a,b)=>a.obj.charges.length-b.obj.charges.length);
+        const target=consumers.find(x=>x.obj.charges.length<100);
+        if(!target)break;
+        target.obj.charges.push(now+3000);
+        target.obj.poweredUntil=now+3000;
+        target.obj.pulseUntil=now+260;
+        for(const pathKey of target.path){
+          const wire=placed.get(pathKey);
+          if(wire)wire.wireUntil=now+3000;
+        }
+        delivered++;
+      }
+      return delivered;
     }
     function tickFactory(){
       const now=performance.now();let mustRender=false;
       // Clear output tiles before attempting new drops at the maximum rate.
       if(now-lastMovementAt>=MOVE_MS){lastMovementAt=now;moveBlobs(now);}
       for(const [key,obj] of placed){
+        if(obj.type==='HydraulicPump'&&obj.enabled){
+          if(now-obj.lastPower>=3000){
+            obj.lastPower+=Math.floor((now-obj.lastPower)/3000)*3000;
+            obj.pulseUntil=now+350;
+            deliverPower(key,now,15);
+            mustRender=true;
+          }
+        }
         if(obj.type==='Turbine'&&obj.enabled){
           if(now-obj.lastPower>=2500){
             obj.lastPower+=Math.floor((now-obj.lastPower)/2500)*2500;
