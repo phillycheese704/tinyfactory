@@ -773,7 +773,7 @@
       const exits=[];
       for(let dir=0;dir<4;dir++){
         const next=neighbor(key,dir);
-        if(next&&placed.get(next)?.type==='Conveyor'&&(!fromKey||next!==fromKey)&&!ins.every(k=>k===next))
+        if(next&&placed.get(next)?.type==='Conveyor'&&placed.get(next).direction!==(dir+2)%4&&(!fromKey||next!==fromKey)&&!ins.every(k=>k===next))
           exits.push({key:next,dir});
       }
       const candidates=exits.filter(x=>ins.some(k=>k!==x.key));
@@ -1197,7 +1197,7 @@
       if(!parts[0]||!parts[2])return false;
       const before=neighbor(parts[0],(obj.direction+2)%4);
       const after=neighbor(parts[2],obj.direction);
-      return placed.get(before)?.type==='Conveyor'&&placed.get(before)?.direction===obj.direction&&placed.get(after)?.type==='Conveyor';
+      return placed.get(before)?.type==='Conveyor'&&placed.get(before)?.direction===obj.direction&&placed.get(after)?.type==='Conveyor'&&placed.get(after)?.direction!==((obj.direction+2)%4);
     }
     function canFeedConveyor(from,to,direction){
       const target=placed.get(to);
