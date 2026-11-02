@@ -52,6 +52,12 @@
     .item-art { width: 70px; height: 65px; border: 2px dashed #a8a8a8; border-radius: 11px 13px 10px 12px; background: #dff1ff; display: grid; place-items: center; }
     .item-art.conveyor { background: #e1f5e8; }
     .item-art.extractor { background: #f3e5fc; }
+    .item-art.hydraulicpump { background:#d6edfd; }
+    .machine-icon.hydraulicpump .pump-piston { animation:pump-drive 3s ease-in-out infinite; transform-origin:32px 28px; }
+    .machine-icon.hydraulicpart .pump-fluid { animation:roll 1s linear infinite; }
+    .machine-icon.hydraulicpump.off .pump-piston,
+    .machine-icon.hydraulicpart.off .pump-fluid { animation-play-state:paused; }
+    @keyframes pump-drive {0%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}68%{transform:translateY(5px)}}
     .item-art.turbine { background: #d7f6ff; }
     .item-art.wire { background: #fff3c7; }
     .item-art.purifier { background: #e4f9ef; }
@@ -290,6 +296,7 @@
           <span class="item-art turbine"></span>
           <span class="item-bottom"><span class="item-name">Turbine</span><span class="price" id="turbinePrice">$50</span></span>
         </button>
+        <button type="button" class="item" id="buyHydraulicPump" data-category="Power" title="2×3 power plant; emits 15 power every 3 seconds"><span class="item-art hydraulicpump"></span><span class="item-bottom"><span class="item-name">Hydraulic Pump</span><span class="price" id="hydraulicpumpPrice">$5K</span></span></button>
         <button type="button" class="item" id="buyWire" data-category="Power">
           <span class="item-art wire"></span>
           <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$10</span></span>
@@ -389,7 +396,7 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgraded:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgraded:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -451,7 +458,7 @@
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
           backpackCosts:inventoryCosts.backpack.map(String),
-          placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart'].includes(obj.type)).map(([key,obj])=>[key,{
+          placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj.type)).map(([key,obj])=>[key,{
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
             sortGrade:obj.sortGrade,sortDir:obj.sortDir,
@@ -536,6 +543,7 @@
         for(const [key,obj] of [...placed]){
           if(obj.type==='LaserCutter')placeLaserParts(key,obj);
           if(obj.type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
+          if(obj.type==='HydraulicPump')placeHydraulicParts(key,obj);
         }
         const now=performance.now();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
@@ -796,7 +804,7 @@
         for(const key of component) {
           for(let d=0;d<4;d++) {
             const nearby=neighbor(key,d),type=nearby && placed.get(nearby)?.type;
-            if(type==='Turbine')sources.push({wire:key,machine:nearby});
+            if(canGeneratePower.has(type))sources.push({wire:key,machine:nearby});
             if(canReceivePower.has(type))sinks.push({wire:key,machine:nearby});
           }
         }
@@ -863,6 +871,18 @@
     const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded','Presser']);
     const logicTypes=new Set(['Splitter','Sorter']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','SuperDropper','CryoChamber','ParticleAccelerator','AcceleratorPart']);
+    const canGeneratePower=new Set(['Turbine','HydraulicPump','HydraulicPart']);
+    // A 2×3 Hydraulic Pump turns into a 3×2 footprint when rotated vertically.
+    // The clicked tile remains the top-left anchor of the complete building.
+    function hydraulicKeys(anchor,direction){
+      const [r,c]=coords(anchor);
+      const vertical=direction%2===0,rows=vertical?3:2,cols=vertical?2:3,keys=[];
+      for(let dy=0;dy<rows;dy++)for(let dx=0;dx<cols;dx++){
+        const rr=r+dy,cc=c+dx;
+        keys.push(rr>=gridRows||cc>=gridCols?null:toKey(rr,cc));
+      }
+      return keys;
+    }
     function acceleratorKeys(center){
       const [row,col]=coords(center),keys=[];
       for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
@@ -882,13 +902,17 @@
     }
     function rootKey(key){
       const obj=placed.get(key);
-      return ['LaserPart','AcceleratorPart'].includes(obj?.type)?obj.parent:key;
+      return ['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj?.type)?obj.parent:key;
     }
     function machineKeys(key,obj=placed.get(key)){
-      return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):obj?.type==='ParticleAccelerator'?acceleratorKeys(key):[key];
+      return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):
+        obj?.type==='ParticleAccelerator'?acceleratorKeys(key):
+        obj?.type==='HydraulicPump'?hydraulicKeys(key,obj.direction):[key];
     }
     function canOccupy(key,type,direction,ignore=new Set()){
-      const positions=type==='LaserCutter'?laserKeys(key,direction):type==='ParticleAccelerator'?acceleratorKeys(key):[key];
+      const positions=type==='LaserCutter'?laserKeys(key,direction):
+        type==='ParticleAccelerator'?acceleratorKeys(key):
+        type==='HydraulicPump'?hydraulicKeys(key,direction):[key];
       // Logic blocks occupy a conveyor's overlay slot; never stack them.
       if(logicTypes.has(type))return positions.every(pos=>pos&&placed.get(pos)?.type==='Conveyor');
       return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
@@ -906,6 +930,16 @@
       for(const part of acceleratorKeys(key)){
         if(part===key)continue;
         placed.set(part,{type:'AcceleratorPart',parent:key,direction:obj.direction});
+      }
+    }
+    function placeHydraulicParts(anchor,obj){
+      if(obj?.type!=='HydraulicPump')return;
+      const [r,c]=coords(anchor);
+      for(const key of hydraulicKeys(anchor,obj.direction)){
+        if(key===anchor)continue;
+        const [rr,cc]=coords(key);
+        placed.set(key,{type:'HydraulicPart',parent:anchor,
+          direction:obj.direction,offsetRow:rr-r,offsetCol:cc-c});
       }
     }
     function acceleratorReady(key){
@@ -935,11 +969,13 @@
       if(!obj)return;
       const next=(obj.direction+1)%4,oldKeys=machineKeys(root,obj);
       if(!canOccupy(root,obj.type,next,new Set(oldKeys))){showToast('Need 3 clear tiles to rotate');return;}
-      if(['LaserCutter','ParticleAccelerator'].includes(obj.type))for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
+      if(['LaserCutter','ParticleAccelerator','HydraulicPump'].includes(obj.type))
+        for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
       obj.direction=next;obj.manuallyRotated=true;
       if(obj.type==='Sorter')obj.sortDir=(obj.sortDir+1)%4;
       if(obj.type==='LaserCutter')placeLaserParts(root,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(root,obj);
+      if(obj.type==='HydraulicPump')placeHydraulicParts(root,obj);
       wireLayoutsDirty=true;markDirty();
       renderGrid();
     }
@@ -961,11 +997,15 @@
         for(const blob of blobs.values())if(blob.key===root)blob.key=to;
         wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
       }
-      const old=machineKeys(root,obj),newPositions=obj.type==='LaserCutter'?laserKeys(to,obj.direction):obj.type==='ParticleAccelerator'?acceleratorKeys(to):[to];
+      const old=machineKeys(root,obj),newPositions=
+        obj.type==='LaserCutter'?laserKeys(to,obj.direction):
+        obj.type==='ParticleAccelerator'?acceleratorKeys(to):
+        obj.type==='HydraulicPump'?hydraulicKeys(to,obj.direction):[to];
       for(const pos of old)placed.delete(pos);
       placed.set(to,obj);
       if(obj.type==='LaserCutter')placeLaserParts(to,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(to,obj);
+      if(obj.type==='HydraulicPump')placeHydraulicParts(to,obj);
       const translations=new Map(old.map((key,i)=>[key,newPositions[i]]));
       for(const blob of blobs.values())if(translations.has(blob.key))blob.key=translations.get(blob.key);
       wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
@@ -1020,7 +1060,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -1117,6 +1157,7 @@
       if (!type || !canOccupy(key,type,1)) {
         if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');
         if(type==='ParticleAccelerator')showToast('Accelerator needs 3×3 clear tiles');
+        if(type==='HydraulicPump')showToast('Hydraulic Pump needs 2×3 clear tiles');
         if(logicTypes.has(type))showToast('Place logic blocks on an empty conveyor');
         return;
       }
@@ -1131,6 +1172,7 @@
       placed.set(key,obj);
       if(type==='LaserCutter')placeLaserParts(key,obj);
       if(type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
+      if(type==='HydraulicPump')placeHydraulicParts(key,obj);
       wireLayoutsDirty=true;
       if(!costs.length) inventory.hotbar[hotbarIndex]=null;
       // Keep a partial stack selected so repeated placement works without retapping.
@@ -1191,7 +1233,7 @@
         if(now-obj.lastClick>=cooldown){
           obj.lastClick=now;spawnBlob(root,now);
         }
-      }else if(obj?.type==='Turbine'){
+      }else if(['Turbine','HydraulicPump'].includes(obj?.type)){
         obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
         markDirty();renderGrid();
       }
@@ -1248,6 +1290,7 @@
       if(item==='LaserCutter') prices[item]=price+180n>MAX_PRICE?MAX_PRICE:price+180n;
       if(item==='AdvancedDropper') prices[item]=price*2n>MAX_PRICE?MAX_PRICE:price*2n;
       if(item==='SuperDropper') prices[item]=price*3n>MAX_PRICE?MAX_PRICE:price*3n;
+      if(item==='HydraulicPump') prices[item]=price>=MAX_PRICE?MAX_PRICE:price>MAX_PRICE/2n?MAX_PRICE:price*2n;
       if(item==='Presser') prices[item]=price>=750n?750n:price+50n>750n?750n:price+50n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
@@ -1259,7 +1302,7 @@
       renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
