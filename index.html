@@ -643,6 +643,24 @@
         <path d="M16 19h32v19H16z" fill="#fff3ff" ${stroke}/><g class="press"><path d="M19 9h26v12H19z" fill="#8f75c4" ${stroke}/><path d="M25 21l7 7 7-7" fill="#af87cc" ${stroke}/></g>
         <circle class="coin" cx="46" cy="14" r="7" fill="#ffe177" stroke="#7e5519" stroke-width="2"/>
         <path d="M24 37h16M20 47v5m24-5v5" ${stroke}/><path d="M32 31l3 4-3 4-3-4z" fill="#414141"/>`,`${pulsing?'is-pulsing':''}`);
+      if (type === 'HydraulicPump') return frame(`<rect x="3" y="4" width="58" height="49" rx="9" fill="#b8daf3" ${stroke}/>
+        <rect x="9" y="10" width="46" height="37" rx="8" fill="#edf8ff" stroke="#668fac" stroke-width="2.3"/>
+        <path d="M0 28h14m36 0h14" stroke="#467a99" stroke-width="8" stroke-linecap="round"/>
+        <g class="pump-piston">
+          <rect x="19" y="20" width="26" height="11" rx="3" fill="#648bb7" stroke="#29496b" stroke-width="2.5"/>
+          <path d="M32 15v-7m-10 29h20m-10-6v13" ${stroke}/>
+        </g>
+        <circle cx="48" cy="14" r="6" fill="#fff7b5" stroke="#715f2e" stroke-width="2"/>
+        <path d="M44 13l-3 5h5l-2 5 8-8h-5l2-4" fill="#ffc339"/>
+        <path d="M12 49h40" stroke="#467a99" stroke-width="5"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
+      if (type === 'HydraulicPart') return frame(`<rect x="3" y="4" width="58" height="49" rx="8" fill="#a3c9e8" ${stroke}/>
+        <path d="M3 17h58M3 41h58" stroke="#5b8bb1" stroke-width="3"/>
+        <rect x="13" y="12" width="38" height="33" rx="8" fill="#d8f0ff" stroke="#447da0" stroke-width="2"/>
+        <g class="pump-fluid">
+          <path d="M10 28h44" stroke="#4b9ee0" stroke-width="9" stroke-linecap="round"/>
+          <path d="M13 28h41" stroke="#e8faff" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round"/>
+        </g>
+        <circle cx="15" cy="14" r="3" fill="#5777a4"/><circle cx="49" cy="42" r="3" fill="#5777a4"/>`,`${enabled?'':'off'}`);
       if (type === 'Turbine') return frame(`<path d="M9 11h46v37H9z" fill="#c8f2ff" ${stroke}/><rect x="13" y="15" width="38" height="29" rx="7" fill="#f7fdff" stroke="#7baab9" stroke-width="2"/>
         <g class="rotor"><path d="M32 27C17 8 12 23 26 28C13 44 29 50 33 32C50 49 54 32 38 28C51 12 36 9 32 27z" fill="#82c8db" ${stroke}/><circle cx="32" cy="28" r="5" fill="#f7e69e" ${stroke}/></g>
         <path d="M18 48v5m28-5v5" ${stroke}/><path d="M49 2l-7 12h6l-4 9" fill="#ffd34e" stroke="#946a13" stroke-width="2"/>`,`${enabled?'':'off'} ${pulsing?'is-pulsing':''}`);
@@ -1133,6 +1151,8 @@
       const now=performance.now();
       $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
         const key=cellKey(index), obj=placed.get(key);
+        const parentMachine=obj?.type==='HydraulicPart'?placed.get(obj.parent):null;
+        const isEnabled=parentMachine?parentMachine.enabled:obj?.enabled;
         const powerCount=obj?.charges?.filter(exp=>exp>now).length||0;
         const powered=!!obj && (powerCount>0 || obj.poweredUntil>now || obj.wireUntil>now);
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
@@ -1140,16 +1160,16 @@
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
         const root=rootKey(key),acc=placed.get(root);
         const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):'';
-        const signature=obj ? [obj.type,obj.direction,obj.shape,obj.enabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
+        const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,obj.enabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
         cell.classList.toggle('move-source',moveFrom===key);
         cell.classList.toggle('is-powered',powered);
-        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${obj?.type==='Turbine'?', '+(obj.enabled?'on':'off'):''}`);
-        cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':obj.type==='Turbine'?'Tap to switch on/off':obj.type):'Empty tile';
+        cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${['Turbine','HydraulicPump','HydraulicPart'].includes(obj?.type)?', '+(isEnabled?'on':'off'):''}`);
+        cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':['Turbine','HydraulicPump','HydraulicPart'].includes(obj.type)?'Tap to switch on/off':obj.type):'Empty tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
