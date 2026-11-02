@@ -1258,10 +1258,14 @@
         obj.manuallyRotated=true;
         wireLayoutsDirty=true;markDirty();renderGrid();return;
       }
-      if(['Dropper','AdvancedDropper'].includes(obj?.type)){
-        const cooldown=obj.type==='AdvancedDropper'?250:500;
-        if(now-obj.lastClick>=cooldown){
-          obj.lastClick=now;spawnBlob(root,now);
+      if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj?.type)){
+        // Manual production works whether or not the dropper is powered.
+        // Each dropper keeps its own click cooldown, independent of auto drops.
+        const cooldown=obj.type==='Dropper'?500:250;
+        if(now-obj.lastClick>=cooldown && spawnBlob(root,now)){
+          obj.lastClick=now;
+          obj.pulseUntil=now+200;
+          renderGrid();
         }
       }else if(['Turbine','HydraulicPump'].includes(obj?.type)){
         obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
