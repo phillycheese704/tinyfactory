@@ -322,7 +322,7 @@
     }
     function machine(type, purchaseCost = 0n) {
       const now = performance.now();
-      return { type, purchaseCost, direction:1, enabled:true, lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
+      return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
     }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
@@ -342,12 +342,14 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:0n,Splitter:50n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
     let rotateActive = false;
+    let moveActive = false;
+    let moveFrom = null;
     let dragging = null;
     let toastTimer;
     // Automatic wire topology is recalculated only when a machine is placed, removed or rotated.
@@ -373,8 +375,8 @@
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
           backpackCosts:inventoryCosts.backpack.map(String),
-          placed:[...placed].map(([key,obj])=>[key,{type:obj.type,direction:obj.direction,enabled:obj.enabled,purchaseCost:String(obj.purchaseCost??0n)}]),
-          blobs:[...blobs.values()].map(b=>({id:b.id,key:b.key,worth:String(b.worth),shiny:!!b.shiny,state:b.state}))
+          placed:[...placed].filter(([,obj])=>obj.type!=='LaserPart').map(([key,obj])=>[key,{type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n)}]),
+          blobs:[...blobs.values()].map(b=>({id:b.id,key:b.key,worth:String(b.worth),shiny:!!b.shiny,ember:!!b.ember,color:b.color??'black',neon:!!b.neon,grade:b.grade??'normal',entryDir:b.entryDir??null,state:b.state}))
         };
         localStorage.setItem(SAVE_KEY,JSON.stringify(data));
         saveDirty=false;
@@ -409,14 +411,18 @@
           const obj=machine(entry[1].type,parseMoney(entry[1].purchaseCost));
           obj.direction=((Math.trunc(Number(entry[1].direction)||0)%4)+4)%4;
           obj.enabled=entry[1].enabled!==false;
+          obj.shape=Math.max(0,Math.min(2,Number(entry[1].shape)||0));
+          obj.manuallyRotated=!!entry[1].manuallyRotated;
           placed.set(entry[0],obj);
         }
+        // Restore the two outer tiles of each saved three-tile laser machine.
+        for(const [key,obj] of [...placed])if(obj.type==='LaserCutter')placeLaserParts(key,obj);
         const now=performance.now();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
           if(!/^\d+,\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
           const id=Number(b.id);
           if(!Number.isInteger(id)||id<1||blobs.has(id))continue;
-          blobs.set(id,{id,key:b.key,worth:parseMoney(b.worth,1n),shiny:!!b.shiny,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
+          blobs.set(id,{id,key:b.key,worth:parseMoney(b.worth,1n),shiny:!!b.shiny,ember:!!b.ember,color:b.color||'black',neon:!!b.neon,grade:b.grade||'normal',entryDir:Number.isInteger(b.entryDir)?b.entryDir:null,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
           nextBlobId=Math.max(nextBlobId,id+1);
         }
         wireLayoutsDirty=true;
@@ -434,7 +440,7 @@
       }
       Object.assign(prices,initialPrices);
       wireLayoutsDirty=true;wirePorts.clear();
-      deleteActive=false;rotateActive=false;selectedHotbar=null;selected=null;
+      deleteActive=false;rotateActive=false;moveActive=false;moveFrom=null;selectedHotbar=null;selected=null;
       clearDragStyles();dragging=null;
       updateAllShopPrices();updateMoney();renderInventory();renderGrid();renderBlobs();
       try{localStorage.removeItem(SAVE_KEY);}catch{}
@@ -674,7 +680,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -854,6 +860,9 @@
       if(item==='Conveyor') prices[item]=price===0n?50n:price>=250n?250n:price+50n;
       if(item==='Purifier') prices[item]=price+25n>MAX_PRICE?MAX_PRICE:price+25n;
       if(item==='Furnace') prices[item]=price*3n/2n>MAX_PRICE?MAX_PRICE:((price*3n+10n)/20n)*10n;
+      if(item==='CryoChamber') prices[item]=price+50n>MAX_PRICE?MAX_PRICE:price+50n;
+      if(item==='LaserCutter') prices[item]=price+180n>MAX_PRICE?MAX_PRICE:price+180n;
+      if(item==='AdvancedDropper') prices[item]=price===0n?2n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
         // 1.25x, rounded upward to the next multiple of five.
@@ -863,7 +872,7 @@
       $(`${item.toLowerCase()}Price`).textContent=formatPrice(prices[item]);
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
@@ -1177,6 +1186,13 @@
       if (open) $('closeBackpack').focus();
       else if (restoreFocus) bagToggle.focus();
     }
+    document.querySelectorAll('.shop-tab').forEach(tab=>tab.addEventListener('click',()=>{
+      const category=tab.dataset.tab;
+      document.querySelectorAll('.shop-tab').forEach(t=>t.setAttribute('aria-selected',String(t===tab)));
+      document.querySelectorAll('#shopItems .item').forEach(item=>{
+        item.dataset.hidden=String(category!=='All'&&item.dataset.category!==category);
+      });
+    }));
     $('shopToggle').addEventListener('click', () => setShop(true));
     $('closeShop').addEventListener('click', () => setShop(false));
     $('shopScrim').addEventListener('click', () => setShop(false));
