@@ -730,7 +730,9 @@
       placed.set(key,machine(type,cost));
       wireLayoutsDirty=true;
       if(!costs.length) inventory.hotbar[hotbarIndex]=null;
-      selectedHotbar=null;deleteActive=false;rotateActive=false;
+      // Keep a partial stack selected so repeated placement works without retapping.
+      selectedHotbar=costs.length?hotbarIndex:null;
+      deleteActive=false;rotateActive=false;
       markDirty();
       renderGrid();renderInventory();
     }
