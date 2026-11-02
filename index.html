@@ -486,16 +486,16 @@
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitFactoryGrid).observe(document.querySelector('.hotbar-wrap'));
 
     // Individual illustrated SVGs keep the animations working in iPad Safari.
-    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false) {
+    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0) {
       if (!type) return '';
       const stroke = 'stroke="#292929" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"';
       const frame = (inside, classes='') => `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${inside}</svg>`;
-      if (type === 'Dropper') return frame(`
+      if (type === 'Dropper') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
         <path d="M12 15L17 8h30l5 7v9H12z" fill="#b6ddff" ${stroke}/>
         <path d="M22 8V4h20v4M13 25h38M17 25v20h30V25" fill="#e4effa" ${stroke}/>
         <g class="plunger"><path d="M23 19h18v10H23z" fill="#f0b767" ${stroke}/><path d="M32 29v10m-5 0h10l-5 7z" fill="#687c8f" ${stroke}/></g>
         <circle class="drip" cx="32" cy="47" r="3.5" fill="#202020"/>
-        <path d="M18 32h5m18 0h5" ${stroke}/><path class="power-indicator" d="M47 5l-5 8h5l-4 8" fill="#ffda49" stroke="#b47704" stroke-width="1.5"/>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
+        <path d="M18 32h5m18 0h5" ${stroke}/><path class="power-indicator" d="M47 5l-5 8h5l-4 8" fill="#ffda49" stroke="#b47704" stroke-width="1.5"/></g>`, `${powered?'powered':''} ${pulsing?'is-pulsing':''}`);
       if (type === 'Conveyor') {
         // Entry is inferred from the previous neighbouring belt or dropper;
         // draw a rounded curve automatically when entry and exit differ.
@@ -528,6 +528,42 @@
         <rect x="14" y="12" width="36" height="33" rx="7" fill="#5a3f38" stroke="#7c4029" stroke-width="2"/>
         <g class="furnace-flame"><path d="M32 17c6 9 12 11 8 19-3 8-14 10-19 2-5-7 1-13 4-18 1 6 4 8 7-3z" fill="#ff9c36" stroke="#a74d19" stroke-width="1.5"/><path d="M32 27c3 4 5 8 3 11-3 5-9 2-7-3z" fill="#ffe36c"/></g>
         <path d="M15 48v5m34-5v5" ${stroke}/></g>`);
+      if (type === 'AdvancedDropper') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="11" y="10" width="42" height="35" rx="8" fill="#d9a56c" ${stroke}/>
+        <path d="M18 16h28v10H18z" fill="#f7d5aa" ${stroke}/>
+        <g class="plunger"><path d="M32 25v15m-7-6 7 9 7-9" ${stroke}/></g>
+        <circle cx="16" cy="14" r="3" fill="#edf0f2"/><circle cx="48" cy="14" r="3" fill="#bb7e3b"/></g>`,`${powered?'powered':''}`);
+      if (type === 'CryoChamber') return frame(`<rect x="5" y="7" width="54" height="43" rx="12" fill="#b8e9ff" ${stroke}/>
+        <path d="M0 28h12m40 0h12" stroke="#3ba4e2" stroke-width="7"/>
+        <rect x="15" y="13" width="34" height="30" rx="8" fill="#eafaff" stroke="#58a8d2" stroke-width="2"/>
+        <g class="ice-spin"><path d="M32 14v28M18 28h28M22 18l20 20m0-20L22 38" fill="none" stroke="#69caff" stroke-width="3.2" stroke-linecap="round"/></g>
+        <circle cx="32" cy="28" r="5" fill="#d0f4ff" stroke="#328bbf" stroke-width="1.5"/>`,`${powered?'powered':''}`);
+      if (type === 'LaserCutter') return frame(`<rect x="6" y="9" width="52" height="38" rx="7" fill="#ffe4e9" ${stroke}/>
+        <rect x="11" y="15" width="13" height="26" rx="4" fill="#ad4554" stroke="#6a2836" stroke-width="2"/>
+        <rect x="40" y="15" width="13" height="26" rx="4" fill="#ad4554" stroke="#6a2836" stroke-width="2"/>
+        <path class="laser-beam" d="M18 28h29" stroke="#ff2349" stroke-width="5" stroke-linecap="round"/>
+        <path d="M28 10l3 8m5-8-3 8m-5 20 3 8m5-8-3 8" stroke="#ff7488" stroke-width="2"/>`);
+      if (type === 'LaserPart') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="7" y="9" width="50" height="38" rx="8" fill="#f5b9c3" ${stroke}/>
+        <rect x="17" y="16" width="30" height="24" rx="6" fill="#cf5269" stroke="#8e2a40" stroke-width="2.5"/>
+        <circle cx="32" cy="28" r="7" fill="#ff294b"/><path d="M0 28h9m46 0h9" stroke="#e84965" stroke-width="6"/></g>`);
+      if (type === 'Splitter') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <rect x="6" y="7" width="52" height="42" rx="11" fill="#dce5ff" ${stroke}/>
+        <path d="M7 28h25m0 0 19-14m-19 14 19 14" stroke="#7a83c5" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <path d="m26 23 6 5-6 5m19-23 6 4-7 4m0 18 7 6-7 4" fill="none" stroke="#3b4e96" stroke-width="2"/>
+        <circle class="splitter-led" cx="32" cy="28" r="5" fill="#ffe287"/></g>`);
+      if (type === 'Wire' && shape > 0) {
+        const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4,(direction+3)%4];
+        const input=incoming==null?(direction+2)%4:incoming;
+        const ports=[...new Set([...outputs,input])];
+        const edge=d=>[[32,0],[64,28],[32,56],[0,28]][d];
+        const paths=ports.map(d=>{const p=edge(d);return `M32 28 L${p[0]} ${p[1]}`;}).join(' ');
+        const sockets=ports.map(d=>`<g transform="rotate(${d*90} 32 28)"><rect x="25" y="-1" width="14" height="10" rx="3" fill="${d===input?'#48b8ff':'#ff6464'}" stroke="#553d40" stroke-width="2"/></g>`).join('');
+        return frame(`<rect x="8" y="8" width="48" height="40" rx="9" fill="#fff0c5" stroke="#695b3c" stroke-width="2"/>
+          <path d="${paths}" stroke="#756355" stroke-width="11" fill="none" stroke-linecap="round"/>
+          <path class="wire-energy" d="${paths}" stroke="#ffdc59" stroke-width="4" stroke-dasharray="5 8" fill="none"/>
+          ${sockets}<circle cx="32" cy="28" r="7" fill="#ffc93a" stroke="#8b6c26" stroke-width="2"/>`,`${powered?'powered':''}`);
+      }
       if (type === 'Wire') {
         // Connection drawing follows the actual blue-input/red-output route.
         // Both sockets sit at tile edges; a rounded curve joins perpendicular sides.
