@@ -28,7 +28,11 @@
     .world { position: relative; min-height: 100vh; min-height: 100dvh; background: #fff; }
     .topbar { position: absolute; inset: 0 0 auto 0; height: 83px; display: flex; align-items: flex-start; justify-content: space-between; padding: max(20px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left)); gap: 10px; }
     .brand { margin: 4px 0 0; font-size: clamp(15px, 1.8vw, 19px); font-weight: 800; letter-spacing: -.6px; line-height: 1.2; white-space: nowrap; transform: rotate(-1deg); }
-    .balance { position: absolute; left: 50%; top: max(20px, env(safe-area-inset-top)); transform: translateX(-50%) rotate(-1deg); border: var(--stroke); border-radius: 13px 11px 13px 10px; background: #fff; box-shadow: 2px 3px 0 var(--ink); padding: 8px 14px; min-width: 78px; font-size: 16px; font-weight: 800; text-align: center; white-space: nowrap; transition: opacity .2s, transform .2s; }
+    .balance { position: absolute; left: 50%; top: max(20px, env(safe-area-inset-top)); transform: translateX(-50%) rotate(-1deg); border: var(--stroke); border-radius: 13px 11px 13px 10px; background: #fff; box-shadow: 2px 3px 0 var(--ink); padding: 8px 14px; min-width: 78px; font-size: 16px; font-weight: 800; text-align: center; white-space: nowrap; transition: opacity .2s, transform .2s; display: inline-flex; justify-content: center; align-items: center; gap: 7px; }
+    .money-trend { display: inline-flex; align-items: center; justify-content: center; width: 19px; min-width: 19px; height: 21px; line-height: 1; font: 900 22px/1 sans-serif; color: #7b858e; }
+    .money-trend[data-direction="up"] { color: #198452; }
+    .money-trend[data-direction="down"] { color: #d04137; }
+    .money-trend[data-direction="flat"] { color: #7b858e; }
     body.shop-open .balance, body.bag-open .balance { opacity: 0; transform: translate(-50%, -10px) rotate(-1deg); pointer-events: none; }
     .shop-toggle { flex: 0 0 auto; width: 53px; height: 51px; border: var(--stroke); border-radius: 13px 11px 15px 10px; background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); display: grid; place-items: center; cursor: pointer; transform: rotate(3deg); transition: transform .17s ease, box-shadow .17s ease; }
     .shop-toggle:hover { transform: translateY(-2px) rotate(-2deg); box-shadow: 4px 5px 0 var(--ink); }
@@ -248,7 +252,7 @@
   <main class="world" id="world">
     <header class="topbar">
       <h1 class="brand">🏭Tiny Factory</h1>
-      <div class="balance" id="balance" aria-label="Money">$0</div>
+      <div class="balance" id="balance" aria-label="Money: $0; no net change"><span id="balanceAmount">$0</span><span class="money-trend" id="moneyTrend" data-direction="flat" aria-hidden="true" title="No net change over the last 10 seconds">—</span></div>
       <button type="button" class="shop-toggle" id="shopToggle" aria-label="Open shop" aria-haspopup="dialog" aria-controls="shopPanel" aria-expanded="false" title="Shop">
         <svg viewBox="0 0 64 64" fill="none" stroke="#292929" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11h7l7 31h29l6-23H18"/><path d="M23 29h30M31 20l2 21m11-21-2 21M21 46h30"/><path d="M29 54a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM46 54a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>
       </button>
@@ -396,6 +400,11 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
+    // Only the last 10 seconds count toward the net income indicator.
+    // Keep this transient; a saved balance is not money earned on page load.
+    const MONEY_TREND_WINDOW_MS = 10000;
+    let lastTrackedMoney = null;
+    const moneyTransactions = [];
     const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
@@ -569,7 +578,7 @@
     function resetGame(){
       document.body.classList.remove('money-holding');
       document.body.classList.add('resetting');
-      money=0n;placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
+      money=0n;clearMoneyTrend();placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
       for(let i=0;i<HOTBAR_SIZE;i++){
         inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
       }
@@ -1104,9 +1113,34 @@
       return value.toString();
     }
     function formatPrice(value) { return value === 0n ? 'FREE' : '$' + formatAmount(value); }
-    function updateMoney() {
-      $('balance').textContent = '$' + formatAmount(money);
-      $('shopMoney').textContent = '$' + formatAmount(money);
+    function clearMoneyTrend(){
+      moneyTransactions.length=0;
+      lastTrackedMoney=money;
+    }
+    function refreshMoneyTrend(now=performance.now()){
+      while(moneyTransactions.length && now-moneyTransactions[0].time>=MONEY_TREND_WINDOW_MS)
+        moneyTransactions.shift();
+      let net=0n;
+      for(const transaction of moneyTransactions)net+=transaction.change;
+      const direction=net>0n?'up':net<0n?'down':'flat';
+      const arrow=$('moneyTrend');
+      if(arrow.dataset.direction!==direction){
+        arrow.dataset.direction=direction;
+        arrow.textContent=direction==='up'?'↑':direction==='down'?'↓':'—';
+      }
+      const description=direction==='up'?'Earning more than spending':
+        direction==='down'?'Spending more than earning':'No net change';
+      arrow.title=description+' over the last 10 seconds';
+      $('balance').setAttribute('aria-label','Money: $'+formatAmount(money)+'; '+description.toLowerCase());
+    }
+    function updateMoney(){
+      const now=performance.now();
+      if(lastTrackedMoney!==null && money!==lastTrackedMoney)
+        moneyTransactions.push({time:now,change:money-lastTrackedMoney});
+      lastTrackedMoney=money;
+      $('balanceAmount').textContent='$'+formatAmount(money);
+      $('shopMoney').textContent='$'+formatAmount(money);
+      refreshMoneyTrend(now);
     }
     function showToast(message) {
       const toast = $('toast');
@@ -1882,6 +1916,8 @@
       if(mustRender)renderGrid();
     }
     setInterval(tickFactory,50);
+    // Revert the indicator to a flat line when the last transaction ages out.
+    setInterval(refreshMoneyTrend,1000);
 
     function setShop(open) {
       if (open && $('backpackLayer').classList.contains('is-open')) setBackpack(false, false);
