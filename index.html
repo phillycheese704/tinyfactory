@@ -368,7 +368,8 @@
     }
     function machine(type, purchaseCost = 0n) {
       const now = performance.now();
-      return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0 };
+      return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0,
+        batch:[],pending:[],batchRemaining:3000,batchLastAt:now,sortGrade:'diamond',sortDir:2 };
     }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
@@ -833,20 +834,34 @@
     const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded','Presser']);
     const logicTypes=new Set(['Splitter','Sorter']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','CryoChamber']);
+    function acceleratorKeys(center){
+      const [row,col]=coords(center),keys=[];
+      for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+        const r=row+dr,c=col+dc;
+        keys.push(r<0||c<0||r>=gridRows||c>=gridCols?null:toKey(r,c));
+      }
+      return keys;
+    }
+    function acceleratorSide(center,direction,exit=false){
+      const [r,c]=coords(center),step=directions[direction];
+      const sign=exit?1:-1;
+      const rr=r+step[0]*sign,cc=c+step[1]*sign;
+      return rr<0||cc<0||rr>=gridRows||cc>=gridCols?null:toKey(rr,cc);
+    }
     function laserKeys(center,direction){
       return [neighbor(center,(direction+2)%4),center,neighbor(center,direction)];
     }
     function rootKey(key){
       const obj=placed.get(key);
-      return obj?.type==='LaserPart'?obj.parent:key;
+      return ['LaserPart','AcceleratorPart'].includes(obj?.type)?obj.parent:key;
     }
     function machineKeys(key,obj=placed.get(key)){
-      return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):[key];
+      return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):obj?.type==='ParticleAccelerator'?acceleratorKeys(key):[key];
     }
     function canOccupy(key,type,direction,ignore=new Set()){
-      const positions=type==='LaserCutter'?laserKeys(key,direction):[key];
-      // A splitter can only cover an installed conveyor, never an empty tile.
-      if(type==='Splitter')return positions.every(pos=>pos&&(placed.get(pos)?.type==='Conveyor'||ignore.has(pos)));
+      const positions=type==='LaserCutter'?laserKeys(key,direction):type==='ParticleAccelerator'?acceleratorKeys(key):[key];
+      // Logic blocks occupy a conveyor's overlay slot; never stack them.
+      if(logicTypes.has(type))return positions.every(pos=>pos&&placed.get(pos)?.type==='Conveyor');
       return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
     }
     function placeLaserParts(key,obj){
@@ -857,11 +872,26 @@
       placed.set(parts[2],{type:'LaserPart',parent:key,segment:'out',direction:obj.direction});
       return true;
     }
+    function placeAcceleratorParts(key,obj){
+      if(obj?.type!=='ParticleAccelerator')return;
+      for(const part of acceleratorKeys(key)){
+        if(part===key)continue;
+        placed.set(part,{type:'AcceleratorPart',parent:key,direction:obj.direction});
+      }
+    }
+    function acceleratorReady(key){
+      const obj=placed.get(key);
+      if(obj?.type!=='ParticleAccelerator')return false;
+      const inCell=acceleratorSide(key,obj.direction),outCell=acceleratorSide(key,obj.direction,true);
+      const before=inCell&&neighbor(inCell,(obj.direction+2)%4);
+      const after=outCell&&neighbor(outCell,obj.direction);
+      return beltFeeds(before,inCell)&&isBeltTile(after)&&beltCanContinue(after,outCell);
+    }
     function removeMachine(key){
       const root=rootKey(key),obj=placed.get(root);
       if(!obj)return null;
-      if(obj.type==='Splitter'){
-        // Refund only the splitter; return the conveyor underneath intact.
+      if(logicTypes.has(obj.type)){
+        // Refund only the logic block; return the conveyor underneath intact.
         placed.set(root,obj.underConveyor??machine('Conveyor'));
       }else{
         for(const pos of machineKeys(root,obj)){
@@ -876,9 +906,10 @@
       if(!obj)return;
       const next=(obj.direction+1)%4,oldKeys=machineKeys(root,obj);
       if(!canOccupy(root,obj.type,next,new Set(oldKeys))){showToast('Need 3 clear tiles to rotate');return;}
-      if(obj.type==='LaserCutter')for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
+      if(['LaserCutter','ParticleAccelerator'].includes(obj.type))for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
       obj.direction=next;obj.manuallyRotated=true;
       if(obj.type==='LaserCutter')placeLaserParts(root,obj);
+      if(obj.type==='ParticleAccelerator')placeAcceleratorParts(root,obj);
       wireLayoutsDirty=true;markDirty();
       renderGrid();
     }
@@ -888,20 +919,22 @@
         showToast('Space occupied');return false;
       }
       if(root===to)return true;
-      if(obj.type==='Splitter'){
-        // Keep the original belt when relocating the splitter attachment.
+      if(logicTypes.has(obj.type)){
+        // Keep the original belt when relocating the logic attachment.
         const newBelt=placed.get(to);
         placed.set(root,obj.underConveyor??machine('Conveyor'));
         obj.underConveyor=newBelt;
         obj.direction=newBelt.direction;
+        if(obj.type==='Sorter')obj.sortDir=(obj.direction+1)%4;
         placed.set(to,obj);
         for(const blob of blobs.values())if(blob.key===root)blob.key=to;
         wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
       }
-      const old=machineKeys(root,obj),newPositions=obj.type==='LaserCutter'?laserKeys(to,obj.direction):[to];
+      const old=machineKeys(root,obj),newPositions=obj.type==='LaserCutter'?laserKeys(to,obj.direction):obj.type==='ParticleAccelerator'?acceleratorKeys(to):[to];
       for(const pos of old)placed.delete(pos);
       placed.set(to,obj);
       if(obj.type==='LaserCutter')placeLaserParts(to,obj);
+      if(obj.type==='ParticleAccelerator')placeAcceleratorParts(to,obj);
       const translations=new Map(old.map((key,i)=>[key,newPositions[i]]));
       for(const blob of blobs.values())if(translations.has(blob.key))blob.key=translations.get(blob.key);
       wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
@@ -1050,18 +1083,21 @@
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
       if (!type || !canOccupy(key,type,1)) {
         if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');
-        if(type==='Splitter')showToast('Place Splitter on a conveyor belt');
+        if(type==='ParticleAccelerator')showToast('Accelerator needs 3×3 clear tiles');
+        if(logicTypes.has(type))showToast('Place logic blocks on an empty conveyor');
         return;
       }
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
       const obj=machine(type,cost);
-      if(type==='Splitter'){
+      if(logicTypes.has(type)){
         obj.underConveyor=placed.get(key);
         obj.direction=obj.underConveyor.direction;
+        obj.sortDir=(obj.direction+1)%4;
       }
       placed.set(key,obj);
       if(type==='LaserCutter')placeLaserParts(key,obj);
+      if(type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
       wireLayoutsDirty=true;
       if(!costs.length) inventory.hotbar[hotbarIndex]=null;
       // Keep a partial stack selected so repeated placement works without retapping.
@@ -1070,6 +1106,26 @@
       markDirty();
       renderGrid();renderInventory();
     }
+    let editingSorter=null;
+    function openSorter(key){
+      const obj=placed.get(key);
+      if(obj?.type!=='Sorter')return;
+      editingSorter=key;
+      $('sorterGrade').value=obj.sortGrade||'diamond';
+      $('sorterDirection').value=String(obj.sortDir??((obj.direction+1)%4));
+      $('sorterPanel').classList.add('open');
+    }
+    function closeSorter(){editingSorter=null;$('sorterPanel').classList.remove('open');}
+    $('sorterCancel').addEventListener('click',closeSorter);
+    $('sorterSave').addEventListener('click',()=>{
+      const obj=editingSorter&&placed.get(editingSorter);
+      if(obj?.type==='Sorter'){
+        obj.sortGrade=$('sorterGrade').value;
+        obj.sortDir=Number($('sorterDirection').value);
+        markDirty();renderGrid();
+      }
+      closeSorter();
+    });
     function useGridCell(index){
       if($('shopLayer').classList.contains('is-open')||$('backpackLayer').classList.contains('is-open'))return;
       const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=performance.now();
@@ -1088,6 +1144,7 @@
       }
       if(selectedHotbar!==null){placeFromHotbar(index,selectedHotbar);return;}
       if(rotateActive&&obj){rotateMachine(root);return;}
+      if(obj?.type==='Sorter'){openSorter(root);return;}
       if(obj?.type==='Wire'){
         obj.shape=(obj.shape+1)%3;
         obj.manuallyRotated=true;
