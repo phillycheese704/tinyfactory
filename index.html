@@ -61,6 +61,24 @@
     .item-art.advanceddropper { background:#fff0d5; }
     .item-art.splitter { background:#e6ecff; }
     .item-art.upgraded { background:#f1ebff; }
+    .item-art.particleaccelerator {background:#dddcff}
+    .item-art.superdropper {background:#ffefc7}
+    .item-art.sorter {background:#d8fff0}
+    .item-art.presser {background:#ffdecf}
+    .machine-icon.particleaccelerator .accelerator-ring {animation:spin 2s linear infinite;transform-origin:32px 28px}
+    .machine-icon.particleaccelerator .accelerator-core {animation:glow 1.2s ease-in-out infinite;transform-origin:32px 28px}
+    .machine-icon.superdropper .super-plunger {animation:plunge 1.15s infinite}
+    .machine-icon.presser .press-head {animation:press 1.4s ease-in-out infinite}
+    .blob.plate .blob-dot {border-radius:3px;transform:scaleX(1.3) scaleY(.6)}
+    .machine-status {position:absolute;left:1px;top:1px;z-index:4;background:#fff8d8;border:1px solid #755b41;padding:1px 3px;border-radius:4px;font:800 clamp(8px,1.3vw,12px)/1.2 sans-serif;pointer-events:none}
+    .sorter-panel {position:fixed;inset:0;z-index:45;display:none;align-items:center;justify-content:center;padding:18px;background:#0006;backdrop-filter:blur(3px)}
+    .sorter-panel.open {display:flex}
+    .sorter-config {width:min(420px,95vw);background:#fffdf5;border:3px solid #292929;box-shadow:7px 8px 0 #292929;border-radius:16px;padding:20px;display:grid;gap:13px}
+    .sorter-config h2 {margin:0;font-size:22px}
+    .sorter-config label {display:grid;gap:5px;font-weight:800}
+    .sorter-config select {background:white;border:2px solid #292929;border-radius:9px;padding:10px;font-size:16px}
+    .sorter-actions {display:flex;gap:8px;justify-content:flex-end}
+    .sorter-actions button{border:2px solid #292929;border-radius:9px;background:#ffe39b;padding:10px 18px;font-weight:800;cursor:pointer}
     .machine-icon.upgraded .upgrade-core { animation:glow 1.3s ease-in-out infinite; transform-origin:32px 28px; }
     .shop-tabs { display:flex; gap:8px; padding:10px clamp(20px,3.5vw,48px) 0; overflow-x:auto; scrollbar-width:thin; flex-shrink:0; }
     .shop-tab { flex:0 0 auto;border:2px solid #292929;background:#fff;border-radius:11px;padding:9px 15px;cursor:pointer;font-weight:800; }
@@ -274,7 +292,7 @@
         </button>
         <button type="button" class="item" id="buyWire" data-category="Power">
           <span class="item-art wire"></span>
-          <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$50</span></span>
+          <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$10</span></span>
         </button>
         <button type="button" class="item" id="buyPurifier" data-category="Processing">
           <span class="item-art purifier"></span>
@@ -287,8 +305,12 @@
         <button type="button" class="item" id="buyCryoChamber" data-category="Processing"><span class="item-art cryochamber"></span><span class="item-bottom"><span class="item-name">Cryo Chamber</span><span class="price" id="cryochamberPrice">$750</span></span></button>
         <button type="button" class="item" id="buyLaserCutter" data-category="Processing"><span class="item-art lasercutter"></span><span class="item-bottom"><span class="item-name">Laser Cutter</span><span class="price" id="lasercutterPrice">$300</span></span></button>
         <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">$200</span></span></button>
-        <button type="button" class="item" id="buySplitter" data-category="Transport" title="Place onto an existing conveyor belt"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$50</span></span></button>
+        <button type="button" class="item" id="buySplitter" data-category="Transport" title="Place onto an existing conveyor belt"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$10</span></span></button>
         <button type="button" class="item" id="buyUpgraded" data-category="Processing" title="Upgrade each passing blob to the next quality tier"><span class="item-art upgraded"></span><span class="item-bottom"><span class="item-name">Upgraded</span><span class="price" id="upgradedPrice">$500</span></span></button>
+        <button type="button" class="item" id="buyParticleAccelerator" data-category="Processing" title="3×3 powered batch accelerator"><span class="item-art particleaccelerator"></span><span class="item-bottom"><span class="item-name">Particle Accelerator</span><span class="price" id="particleacceleratorPrice">$1B</span></span></button>
+        <button type="button" class="item" id="buySuperDropper" data-category="Production"><span class="item-art superdropper"></span><span class="item-bottom"><span class="item-name">Super Dropper</span><span class="price" id="superdropperPrice">$5K</span></span></button>
+        <button type="button" class="item" id="buySorter" data-category="Transport" title="Logic block: place on a conveyor"><span class="item-art sorter"></span><span class="item-bottom"><span class="item-name">Sorter</span><span class="price" id="sorterPrice">$10</span></span></button>
+        <button type="button" class="item" id="buyPresser" data-category="Processing"><span class="item-art presser"></span><span class="item-bottom"><span class="item-name">Presser</span><span class="price" id="presserPrice">$450</span></span></button>
       </div>
     </section>
   </div>
@@ -304,6 +326,25 @@
     </section>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="sorter-panel" id="sorterPanel" role="dialog" aria-modal="true" aria-label="Configure Sorter">
+    <div class="sorter-config">
+      <h2>🧭 Sorter settings</h2>
+      <label>Send this blob tier a different way
+        <select id="sorterGrade">
+          <option value="bronze">Bronze</option><option value="silver">Silver</option>
+          <option value="gold">Gold</option><option value="diamond">Diamond</option>
+          <option value="normal">Black</option>
+        </select>
+      </label>
+      <label>Send matching blobs
+        <select id="sorterDirection">
+          <option value="0">↑ Up</option><option value="1">→ Right</option>
+          <option value="2">↓ Down</option><option value="3">← Left</option>
+        </select>
+      </label>
+      <div class="sorter-actions"><button type="button" id="sorterCancel">Cancel</button><button type="button" id="sorterSave">Save</button></div>
+    </div>
+  </div>
 
   <script>
     'use strict';
@@ -347,7 +388,7 @@
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
     let money = 0n; // Currency earning/spending will be added with factory gameplay.
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:50n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:50n,Upgraded:500n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgraded:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
@@ -760,7 +801,8 @@
         wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
-    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded']);
+    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgraded','Presser']);
+    const logicTypes=new Set(['Splitter','Sorter']);
     const canReceivePower=new Set(['Dropper','AdvancedDropper','CryoChamber']);
     function laserKeys(center,direction){
       return [neighbor(center,(direction+2)%4),center,neighbor(center,direction)];
@@ -885,7 +927,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded']) {
+    for (const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -1083,6 +1125,8 @@
       if(item==='CryoChamber') prices[item]=price+50n>MAX_PRICE?MAX_PRICE:price+50n;
       if(item==='LaserCutter') prices[item]=price+180n>MAX_PRICE?MAX_PRICE:price+180n;
       if(item==='AdvancedDropper') prices[item]=price*2n>MAX_PRICE?MAX_PRICE:price*2n;
+      if(item==='SuperDropper') prices[item]=price*3n>MAX_PRICE?MAX_PRICE:price*3n;
+      if(item==='Presser') prices[item]=price>=750n?750n:price+50n>750n?750n:price+50n;
       if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
       if(item==='Turbine') {
         // 1.25x, rounded upward to the next multiple of five.
@@ -1093,7 +1137,7 @@
       renderShopCategory();
       updateMoney();renderInventory();markDirty();showToast('Bought '+item);
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded']) {
+    for(const type of ['Dropper','Conveyor','Extractor','Turbine','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgraded','ParticleAccelerator','SuperDropper','Sorter','Presser']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
