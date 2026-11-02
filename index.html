@@ -17,7 +17,7 @@
       --cream: #fffdf7;
       --yellow: #ffe28b;
       --stroke: 2px solid var(--ink);
-      --hot-slot: clamp(19px, calc((100vw - 98px) / 12), 64px);
+      --hot-slot: clamp(18px, calc((100vw - 104px) / 13), 64px);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; }
@@ -56,6 +56,29 @@
     .item-art.wire { background: #fff3c7; }
     .item-art.purifier { background: #e4f9ef; }
     .item-art.furnace { background: #fff0dc; }
+    .item-art.cryochamber { background:#e1f3ff; }
+    .item-art.lasercutter { background:#ffe3e8; }
+    .item-art.advanceddropper { background:#fff0d5; }
+    .item-art.splitter { background:#e6ecff; }
+    .shop-tabs { display:flex; gap:8px; padding:10px clamp(20px,3.5vw,48px) 0; overflow-x:auto; scrollbar-width:thin; flex-shrink:0; }
+    .shop-tab { flex:0 0 auto;border:2px solid #292929;background:#fff;border-radius:11px;padding:9px 15px;cursor:pointer;font-weight:800; }
+    .shop-tab[aria-selected="true"] { background:#ffe28b;box-shadow:2px 3px 0 #292929; }
+    .item[data-hidden="true"] { display:none; }
+    .move-toggle {background:#e7f5e7;border-color:#44764d}
+    .move-toggle[aria-pressed="true"]{background:#cdf1d0;outline:2px solid #32934c}
+    .move-toggle svg {width:70%;height:70%}
+    .grid-cell.move-source {outline:3px dashed #30a36c;outline-offset:-3px;background:#ddfae5}
+    .blob.icy .blob-dot {background:#51c5ff;border-color:#0878b7;box-shadow:0 0 8px #8ce4ff}
+    .blob.lasered .blob-dot {filter:drop-shadow(0 0 5px currentColor);border-color:#ff365b}
+    .blob.ember .blob-dot {box-shadow:0 0 5px #ff8e42}
+    .blob-ember {position:absolute;color:#ff8a35;font-size:13px;animation:ember-float 1s ease-in-out infinite;left:16px;top:4px;pointer-events:none}
+    @keyframes ember-float {0%{opacity:.1;transform:translate(0,5px) scale(.5)}50%{opacity:1;transform:translate(3px,-4px)}100%{opacity:0;transform:translate(-2px,-10px) scale(.3)}}
+    .machine-icon.cryochamber .ice-spin{animation:spin 3s linear infinite;transform-origin:32px 28px}
+    .machine-icon.lasercutter .laser-beam{animation:laser-pulse .65s ease-in-out infinite}
+    @keyframes laser-pulse{50%{opacity:.4;stroke-width:10}}
+    .machine-icon.splitter .splitter-led{animation:glow .9s ease-in-out infinite}
+    .machine-icon.advanceddropper .plunger{animation:plunge 1s ease-in-out infinite;transform-origin:32px 22px}
+    .power-mark{position:absolute;left:1px;bottom:0;font-size:clamp(8px,.85vw,11px);color:#ae7b11;background:#fff8d8;border-radius:3px;pointer-events:none;font-weight:900}
     .item-art svg { width: 58px; height: 53px; }
     .machine-icon { width: 90%; height: 90%; overflow: visible; pointer-events: none; }
     .machine-icon.dropper .plunger { animation: plunge 1.6s ease-in-out infinite; transform-origin: 32px 22px; }
@@ -115,7 +138,7 @@
     /* Fixed, ten-slot inventory bar. Nine storage slots and a backpack button. */
     .hotbar-wrap { position: fixed; z-index: 5; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100% - 12px); padding: 7px; border: 2px solid var(--ink); border-radius: 16px 14px 17px 12px; background: #fffdf7; box-shadow: 3px 4px 0 var(--ink); }
     body.bag-open .hotbar-wrap { z-index: 40; }
-    .hotbar { display: grid; grid-template-columns: repeat(12, var(--hot-slot)); gap: clamp(3px, .65vw, 6px); align-items: center; }
+    .hotbar { display: grid; grid-template-columns: repeat(13, var(--hot-slot)); gap: clamp(3px, .65vw, 6px); align-items: center; }
     .storage-slot, .bag-toggle { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 0; flex: 0 0 auto; border: 2px solid #575757; border-radius: 10px 8px 11px 9px; background: #fff; cursor: pointer; transition: background .12s, border-color .12s, transform .12s; }
     .storage-slot { touch-action: none; user-select: none; -webkit-user-select: none; }
     .storage-slot.has-item { background: #fff9e9; }
@@ -210,6 +233,7 @@
       <button type="button" class="bag-toggle" id="bagToggle" aria-label="Open backpack" aria-controls="backpackPanel" aria-expanded="false" title="Backpack"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-backpack"/></svg></button>
       <button type="button" class="bag-toggle delete-toggle" id="deleteToggle" aria-label="Select delete tool" aria-pressed="false" title="Delete placed item"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-delete"/></svg></button>
       <button type="button" class="bag-toggle rotate-toggle" id="rotateToggle" aria-label="Select rotate tool" aria-pressed="false" title="Rotate machines"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M48 19a23 23 0 1 0 4 18" fill="none" stroke="#286399" stroke-width="5" stroke-linecap="round"/><path d="M46 7v16H30" fill="none" stroke="#286399" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
+      <button type="button" class="bag-toggle move-toggle" id="moveToggle" aria-label="Select move tool" aria-pressed="false" title="Move a machine"><svg viewBox="0 0 64 64" fill="none" stroke="#427f4a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M32 7v50M7 32h50m-25-25-7 8m7-8 7 8m-7 42-7-8m7 8 7-8M7 32l8-7m-8 7 8 7m42-7-8-7m8 7-8 7"/></svg></button>
     </div>
   </nav>
 
@@ -220,35 +244,46 @@
         <div><h2 class="panel-heading">Shop</h2><div class="panel-subtitle" id="shopMoney">$0</div></div>
         <button type="button" id="closeShop" class="close" aria-label="Close shop">×</button>
       </div>
-      <div class="items">
-        <button type="button" class="item" id="buyDropper">
+      <div class="shop-tabs" id="shopTabs" role="tablist" aria-label="Shop categories">
+        <button class="shop-tab" type="button" data-tab="All" role="tab" aria-selected="true">All</button>
+        <button class="shop-tab" type="button" data-tab="Production" role="tab" aria-selected="false">Production</button>
+        <button class="shop-tab" type="button" data-tab="Processing" role="tab" aria-selected="false">Processing</button>
+        <button class="shop-tab" type="button" data-tab="Transport" role="tab" aria-selected="false">Transport</button>
+        <button class="shop-tab" type="button" data-tab="Power" role="tab" aria-selected="false">Power</button>
+      </div>
+      <div class="items" id="shopItems">
+        <button type="button" class="item" id="buyDropper" data-category="Production">
           <span class="item-art"><svg viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-dropper"/></svg></span>
           <span class="item-bottom"><span class="item-name">Dropper</span><span class="price" id="dropperPrice">FREE</span></span>
         </button>
-        <button type="button" class="item" id="buyConveyor">
+        <button type="button" class="item" id="buyConveyor" data-category="Transport">
           <span class="item-art conveyor"><svg viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-conveyor"/></svg></span>
           <span class="item-bottom"><span class="item-name">Conveyor</span><span class="price" id="conveyorPrice">FREE</span></span>
         </button>
-        <button type="button" class="item" id="buyExtractor">
+        <button type="button" class="item" id="buyExtractor" data-category="Processing">
           <span class="item-art extractor"><svg viewBox="0 0 64 56" aria-hidden="true"><use href="#icon-extractor"/></svg></span>
           <span class="item-bottom"><span class="item-name">Extractor</span><span class="price" id="extractorPrice">FREE</span></span>
         </button>
-        <button type="button" class="item" id="buyTurbine">
+        <button type="button" class="item" id="buyTurbine" data-category="Power">
           <span class="item-art turbine"></span>
           <span class="item-bottom"><span class="item-name">Turbine</span><span class="price" id="turbinePrice">$50</span></span>
         </button>
-        <button type="button" class="item" id="buyWire">
+        <button type="button" class="item" id="buyWire" data-category="Power">
           <span class="item-art wire"></span>
           <span class="item-bottom"><span class="item-name">Wire</span><span class="price" id="wirePrice">$50</span></span>
         </button>
-        <button type="button" class="item" id="buyPurifier">
+        <button type="button" class="item" id="buyPurifier" data-category="Processing">
           <span class="item-art purifier"></span>
           <span class="item-bottom"><span class="item-name">Purifier</span><span class="price" id="purifierPrice">$125</span></span>
         </button>
-        <button type="button" class="item" id="buyFurnace">
+        <button type="button" class="item" id="buyFurnace" data-category="Processing">
           <span class="item-art furnace"></span>
           <span class="item-bottom"><span class="item-name">Furnace</span><span class="price" id="furnacePrice">$400</span></span>
         </button>
+        <button type="button" class="item" id="buyCryoChamber" data-category="Processing"><span class="item-art cryochamber"></span><span class="item-bottom"><span class="item-name">Cryo Chamber</span><span class="price" id="cryochamberPrice">$750</span></span></button>
+        <button type="button" class="item" id="buyLaserCutter" data-category="Processing"><span class="item-art lasercutter"></span><span class="item-bottom"><span class="item-name">Laser Cutter</span><span class="price" id="lasercutterPrice">$300</span></span></button>
+        <button type="button" class="item" id="buyAdvancedDropper" data-category="Production"><span class="item-art advanceddropper"></span><span class="item-bottom"><span class="item-name">Advanced Dropper</span><span class="price" id="advanceddropperPrice">FREE</span></span></button>
+        <button type="button" class="item" id="buySplitter" data-category="Transport"><span class="item-art splitter"></span><span class="item-bottom"><span class="item-name">Splitter</span><span class="price" id="splitterPrice">$50</span></span></button>
       </div>
     </section>
   </div>
