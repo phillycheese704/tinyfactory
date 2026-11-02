@@ -526,12 +526,23 @@
         }
       }
     }
+    function processorExit(key,obj) {
+      // A processor requires an input conveyor pointing into its rear, and
+      // a second conveyor directly in front. No power connection is accepted.
+      if(!obj || !['Purifier','Furnace'].includes(obj.type))return null;
+      const before=neighbor(key,(obj.direction+2)%4);
+      const after=neighbor(key,obj.direction);
+      const incoming=before&&placed.get(before),outgoing=after&&placed.get(after);
+      if(incoming?.type!=='Conveyor' || incoming.direction!==obj.direction || outgoing?.type!=='Conveyor')return null;
+      return after;
+    }
     function incomingFor(key, direction) {
       // Look for machines that naturally feed into this conveyor.
       for(let dir=0;dir<4;dir++) {
         const near = neighbor(key, dir), prior = near && placed.get(near);
         if (prior?.type === 'Conveyor' && prior.direction === (dir+2)%4) return dir;
         if (prior?.type === 'Dropper' && dir === 3) return dir;
+        if (['Purifier','Furnace'].includes(prior?.type) && processorExit(near,prior)===key) return dir;
       }
       return (direction+2)%4;
     }
@@ -875,8 +886,8 @@
     function spawnBlob(key, now=performance.now()) {
       if(!placed.has(key) || [...blobs.values()].some(b=>b.key===key)) return false;
       const id=nextBlobId++;
-      blobs.set(id,{id,key,worth:1n,state:'waiting',arrivedAt:now, collectAt:0});
-      renderBlobs();
+      blobs.set(id,{id,key,worth:1n,shiny:false,state:'waiting',arrivedAt:now, collectAt:0});
+      markDirty();renderBlobs();
       return true;
     }
     function renderBlobs() {
@@ -888,10 +899,12 @@
         let el=layer.querySelector(`[data-blob="${blob.id}"]`);
         if(!el) {
           el=document.createElement('div');el.className='blob';el.dataset.blob=blob.id;
-          el.innerHTML=`<span class="blob-worth">$${formatAmount(blob.worth)}</span><span class="blob-dot"></span>`;
+          el.innerHTML=`<span class="blob-worth"></span><span class="blob-dot"></span><span class="blob-glint">✦</span>`;
           layer.appendChild(el);
         }
         visible.add(String(blob.id));
+        el.querySelector('.blob-worth').textContent='$'+formatAmount(blob.worth);
+        el.querySelector('.blob-glint').style.display=blob.shiny?'block':'none';
         el.classList.toggle('collecting',blob.state==='collecting');
         el.style.left=((col+.5)/gridCols*100)+'%';
         el.style.top=((row+.5)/gridRows*100)+'%';
@@ -901,9 +914,12 @@
     function blobDestination(blob) {
       const obj=placed.get(blob.key);if(!obj)return null;
       if(obj.type==='Conveyor') {
-        const next=neighbor(blob.key,obj.direction);
-        return next && ['Conveyor','Extractor'].includes(placed.get(next)?.type)?next:null;
+        const next=neighbor(blob.key,obj.direction),target=next&&placed.get(next);
+        if(target?.type==='Purifier'||target?.type==='Furnace')
+          return processorExit(next,target) && target.direction===obj.direction?next:null;
+        return next && ['Conveyor','Extractor'].includes(target?.type)?next:null;
       }
+      if(obj.type==='Purifier'||obj.type==='Furnace')return processorExit(blob.key,obj);
       if(obj.type==='Dropper') {
         // Droppers prefer the right, but can feed an adjoining belt or extractor.
         for(const dir of [1,2,3,0]) {
@@ -918,7 +934,7 @@
       for(const [id,blob] of blobs) {
         if(blob.state==='collecting') {
           if(now>=blob.collectAt) {
-            money+=blob.worth;updateMoney();blobs.delete(id);
+            money+=blob.worth;updateMoney();blobs.delete(id);markDirty();
           }
           continue;
         }
@@ -927,12 +943,20 @@
         if(!next || occupied.has(next)) continue;
         occupied.delete(blob.key);occupied.add(next);
         blob.key=next;blob.arrivedAt=now;
-        if(placed.get(next)?.type==='Extractor') {
+        const reached=placed.get(next);
+        if(reached?.type==='Purifier') {
+          blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
+        } else if(reached?.type==='Furnace') {
+          // Exact integer maths: x1.3, rounded to the nearest whole dollar.
+          blob.worth=(blob.worth*13n+5n)/10n;
+          reached.pulseUntil=now+350;
+        }
+        if(reached?.type==='Extractor') {
           blob.state='collecting';blob.collectAt=now+350;
           placed.get(next).pulseUntil=now+350;
         }
       }
-      renderBlobs();
+      markDirty();renderBlobs();
     }
     // Blue receives from a turbine or the previous wire's red end; red
     // forwards to the next wire's blue end or a dropper, including 90° bends.
@@ -975,7 +999,7 @@
           if(now-obj.lastUpkeep>=10000) {
             const cycles=Math.floor((now-obj.lastUpkeep)/10000);
             obj.lastUpkeep+=cycles*10000;
-            money-=BigInt(cycles)*5n;updateMoney();
+            money-=BigInt(cycles)*5n;updateMoney();markDirty();
           }
         }
         if(obj.type==='Dropper' && obj.poweredUntil>now && now-obj.lastAuto>=1000) {
