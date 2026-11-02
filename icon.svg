@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tiny Factory">
+  <rect width="512" height="512" rx="110" fill="#fffdf7"/>
+  <g stroke="#292929" stroke-width="19" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M91 267 170 218v49l87-49v49l81-49v49l79-44v155H91Z" fill="#ffe28b"/>
+    <path d="M335 218V117h50v117" fill="#addaff"/>
+    <path d="M346 78q-27-21-3-37m40 40q30-23 10-51" fill="none"/>
+    <path d="M134 314h48v41h-48zm96 0h48v41h-48zm95 0h48v41h-48z" fill="#fff"/>
+    <path d="M91 378h326" fill="none"/>
+  </g>
+  <circle cx="419" cy="108" r="22" fill="#d1f1e6"/>
+</svg>
