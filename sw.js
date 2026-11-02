@@ -54,8 +54,10 @@ self.addEventListener('fetch', event => {
         return response;
       } catch {
         const cache = await caches.open(CACHE_NAME);
-        return (await cache.match(request, { ignoreSearch: true })) ||
-          (await cache.match(APP_SHELL)) ||
+        // Always prefer the newest saved app shell, even if the user opens
+        // the site root rather than the explicit index.html address.
+        return (await cache.match(APP_SHELL)) ||
+          (await cache.match(request, { ignoreSearch: true })) ||
           Response.error();
       }
     })());
