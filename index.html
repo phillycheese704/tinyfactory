@@ -937,6 +937,7 @@
       if(!canOccupy(root,obj.type,next,new Set(oldKeys))){showToast('Need 3 clear tiles to rotate');return;}
       if(['LaserCutter','ParticleAccelerator'].includes(obj.type))for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
       obj.direction=next;obj.manuallyRotated=true;
+      if(obj.type==='Sorter')obj.sortDir=(obj.sortDir+1)%4;
       if(obj.type==='LaserCutter')placeLaserParts(root,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(root,obj);
       wireLayoutsDirty=true;markDirty();
@@ -953,8 +954,9 @@
         const newBelt=placed.get(to);
         placed.set(root,obj.underConveyor??machine('Conveyor'));
         obj.underConveyor=newBelt;
+        const branchOffset=obj.type==='Sorter'?(obj.sortDir-obj.direction+4)%4:0;
         obj.direction=newBelt.direction;
-        if(obj.type==='Sorter')obj.sortDir=(obj.direction+1)%4;
+        if(obj.type==='Sorter')obj.sortDir=(obj.direction+branchOffset)%4;
         placed.set(to,obj);
         for(const blob of blobs.values())if(blob.key===root)blob.key=to;
         wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
@@ -1148,6 +1150,9 @@
     }
     function closeSorter(){editingSorter=null;$('sorterPanel').classList.remove('open');}
     $('sorterCancel').addEventListener('click',closeSorter);
+    $('sorterPanel').addEventListener('click',event=>{
+      if(event.target===$('sorterPanel'))closeSorter();
+    });
     $('sorterSave').addEventListener('click',()=>{
       const obj=editingSorter&&placed.get(editingSorter);
       if(obj?.type==='Sorter'){
@@ -1608,7 +1613,7 @@
         }
       }
       // Drain at most one finished batch blob per conveyor movement step.
-      for(const [key,obj] of placed)if(obj.type==='ParticleAccelerator'&&obj.pending.length&&acceleratorReady(key)){
+      for(const [key,obj] of placed)if(obj.type==='ParticleAccelerator'&&obj.pending.length&&acceleratorReady(key)&&powerLevel(obj,now)>0){
         const exit=acceleratorSide(key,obj.direction,true);
         if(exit&&!occupied.has(exit)){
           const next=obj.pending.shift();
@@ -1749,6 +1754,7 @@
     $('closeBackpack').addEventListener('click', () => setBackpack(false));
     $('backpackScrim').addEventListener('click', () => setBackpack(false));
     document.addEventListener('keydown', event => {
+      if(event.key==='Escape'&&editingSorter!==null){closeSorter();return;}
       if (event.key === 'Escape') {
         if ($('backpackLayer').classList.contains('is-open')) setBackpack(false);
         else if ($('shopLayer').classList.contains('is-open')) setShop(false);
