@@ -986,8 +986,14 @@
       const positions=type==='LaserCutter'?laserKeys(key,direction):
         type==='ParticleAccelerator'?acceleratorKeys(key):
         type==='HydraulicPump'?hydraulicKeys(key,direction):[key];
-      // Logic blocks occupy a conveyor's overlay slot; never stack them.
-      if(logicTypes.has(type))return positions.every(pos=>pos&&placed.get(pos)?.type==='Conveyor');
+      // Logic blocks can attach only to bare conveyors, or stay on their
+      // own tile during rotation. Other logic blocks are never valid bases.
+      if(logicTypes.has(type))return positions.every(pos=>{
+        if(!pos)return false;
+        const current=placed.get(pos);
+        return current?.type==='Conveyor' ||
+          (ignore.has(pos)&&current?.type===type);
+      });
       return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
     }
     function placeLaserParts(key,obj){
