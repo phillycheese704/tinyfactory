@@ -1245,7 +1245,8 @@
         const output=ports?.outputDir??obj?.direction;
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
         const root=rootKey(key),acc=placed.get(root);
-        const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):'';
+        const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):
+          obj?.type==='ValueGate'?'>'+formatAmount(obj.gateThreshold??50n):'';
         const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
           cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
@@ -1255,7 +1256,7 @@
         cell.classList.toggle('move-source',moveFrom===key);
         cell.classList.toggle('is-powered',powered);
         cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${['Turbine','HydraulicPump','HydraulicPart'].includes(obj?.type)?', '+(isEnabled?'on':'off'):''}`);
-        cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':['Turbine','HydraulicPump','HydraulicPart'].includes(obj.type)?'Tap to switch on/off':obj.type):'Empty tile';
+        cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':['Turbine','HydraulicPump','HydraulicPart'].includes(obj.type)?'Tap to switch on/off':obj.type==='ValueGate'?'Value Gate: blobs above $'+formatAmount(obj.gateThreshold??50n)+' go '+['up','right','down','left'][obj.gateDir]+' (tap to configure)':obj.type):'Empty tile';
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
