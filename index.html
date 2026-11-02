@@ -696,23 +696,93 @@
         }
       }
     }
-    function processorExit(key,obj) {
-      // A processor requires an input conveyor pointing into its rear, and
-      // a second conveyor directly in front. No power connection is accepted.
-      if(!obj || !['Purifier','Furnace'].includes(obj.type))return null;
-      const before=neighbor(key,(obj.direction+2)%4);
-      const after=neighbor(key,obj.direction);
-      const incoming=before&&placed.get(before),outgoing=after&&placed.get(after);
-      if(incoming?.type!=='Conveyor' || incoming.direction!==obj.direction || outgoing?.type!=='Conveyor')return null;
-      return after;
+    const processorTypes=new Set(['Purifier','Furnace','CryoChamber']);
+    const canReceivePower=new Set(['Dropper','AdvancedDropper','CryoChamber']);
+    function laserKeys(center,direction){
+      return [neighbor(center,(direction+2)%4),center,neighbor(center,direction)];
+    }
+    function rootKey(key){
+      const obj=placed.get(key);
+      return obj?.type==='LaserPart'?obj.parent:key;
+    }
+    function machineKeys(key,obj=placed.get(key)){
+      return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):[key];
+    }
+    function canOccupy(key,type,direction,ignore=new Set()){
+      const positions=type==='LaserCutter'?laserKeys(key,direction):[key];
+      return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
+    }
+    function placeLaserParts(key,obj){
+      if(obj?.type!=='LaserCutter')return true;
+      const parts=laserKeys(key,obj.direction);
+      if(parts.some((p,i)=>i!==1&&(!p || (placed.has(p)&&placed.get(p).parent!==key))))return false;
+      placed.set(parts[0],{type:'LaserPart',parent:key,segment:'in',direction:obj.direction});
+      placed.set(parts[2],{type:'LaserPart',parent:key,segment:'out',direction:obj.direction});
+      return true;
+    }
+    function removeMachine(key){
+      const root=rootKey(key),obj=placed.get(root);
+      if(!obj)return null;
+      for(const pos of machineKeys(root,obj)) {
+        placed.delete(pos);
+        for(const [id,blob] of blobs)if(blob.key===pos)blobs.delete(id);
+      }
+      wireLayoutsDirty=true;markDirty();return {root,obj};
+    }
+    function rotateMachine(key){
+      const root=rootKey(key),obj=placed.get(root);
+      if(!obj)return;
+      const next=(obj.direction+1)%4,oldKeys=machineKeys(root,obj);
+      if(!canOccupy(root,obj.type,next,new Set(oldKeys))){showToast('Need 3 clear tiles to rotate');return;}
+      if(obj.type==='LaserCutter')for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
+      obj.direction=next;obj.manuallyRotated=true;
+      if(obj.type==='LaserCutter')placeLaserParts(root,obj);
+      wireLayoutsDirty=true;markDirty();
+      renderGrid();
+    }
+    function moveMachine(from,to){
+      const root=rootKey(from),obj=placed.get(root);
+      if(!obj || !canOccupy(to,obj.type,obj.direction,new Set(machineKeys(root,obj)))){
+        showToast('Space occupied');return false;
+      }
+      if(root===to)return true;
+      const old=machineKeys(root,obj),newPositions=obj.type==='LaserCutter'?laserKeys(to,obj.direction):[to];
+      for(const pos of old)placed.delete(pos);
+      placed.set(to,obj);
+      if(obj.type==='LaserCutter')placeLaserParts(to,obj);
+      const translations=new Map(old.map((key,i)=>[key,newPositions[i]]));
+      for(const blob of blobs.values())if(translations.has(blob.key))blob.key=translations.get(blob.key);
+      wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
+    }
+    function processorExit(key,obj,fromKey=null) {
+      if(!obj||!processorTypes.has(obj.type))return null;
+      // Input may come from any side if its conveyor faces this machine.
+      const ins=[];
+      for(let dir=0;dir<4;dir++){
+        const neighborKey=neighbor(key,dir),machine=neighborKey&&placed.get(neighborKey);
+        if(machine?.type==='Conveyor' && machine.direction===(dir+2)%4)ins.push(neighborKey);
+      }
+      if(!ins.length || (fromKey&&!ins.includes(fromKey)))return null;
+      const exits=[];
+      for(let dir=0;dir<4;dir++){
+        const next=neighbor(key,dir);
+        if(next&&placed.get(next)?.type==='Conveyor'&&(!fromKey||next!==fromKey)&&!ins.every(k=>k===next))
+          exits.push({key:next,dir});
+      }
+      const candidates=exits.filter(x=>ins.some(k=>k!==x.key));
+      if(!candidates.length)return null;
+      candidates.sort((a,b)=>(a.dir===obj.direction?-1:0)-(b.dir===obj.direction?-1:0));
+      return candidates[0].key;
     }
     function incomingFor(key, direction) {
       // Look for machines that naturally feed into this conveyor.
       for(let dir=0;dir<4;dir++) {
         const near = neighbor(key, dir), prior = near && placed.get(near);
         if (prior?.type === 'Conveyor' && prior.direction === (dir+2)%4) return dir;
-        if (prior?.type === 'Dropper' && dir === 3) return dir;
-        if (['Purifier','Furnace'].includes(prior?.type) && processorExit(near,prior)===key) return dir;
+        if (['Dropper','AdvancedDropper'].includes(prior?.type) && prior.direction === (dir+2)%4) return dir;
+        if (processorTypes.has(prior?.type) && processorExit(near,prior)===key) return dir;
+        if(prior?.type==='LaserPart' && prior.segment==='out')return dir;
+        if(prior?.type==='Splitter')return dir;
       }
       return (direction+2)%4;
     }
@@ -806,10 +876,12 @@
     }
     function placeFromHotbar(index,hotbarIndex) {
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
-      if (placed.has(key) || !type) return;
+      if (!type || !canOccupy(key,type,1)) {if(type==='LaserCutter')showToast('Laser Cutter needs 3 tiles');return;}
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
-      placed.set(key,machine(type,cost));
+      const obj=machine(type,cost);
+      placed.set(key,obj);
+      if(type==='LaserCutter')placeLaserParts(key,obj);
       wireLayoutsDirty=true;
       if(!costs.length) inventory.hotbar[hotbarIndex]=null;
       // Keep a partial stack selected so repeated placement works without retapping.
@@ -818,37 +890,37 @@
       markDirty();
       renderGrid();renderInventory();
     }
-    function useGridCell(index) {
-      if($('shopLayer').classList.contains('is-open') || $('backpackLayer').classList.contains('is-open')) return;
-      const key=cellKey(index), obj=placed.get(key),now=performance.now();
-      if(deleteActive) {
-        if(obj && placed.delete(key)) {
-          const refund = resaleValue(obj.purchaseCost ?? 0n);
-          money += refund;
-          updateMoney();
-          showToast('Refunded $' + formatAmount(refund));
-          markDirty();
-          wireLayoutsDirty=true;
-          for(const [id,blob] of blobs) if(blob.key===key) blobs.delete(id);
-          renderGrid();renderBlobs();
+    function useGridCell(index){
+      if($('shopLayer').classList.contains('is-open')||$('backpackLayer').classList.contains('is-open'))return;
+      const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=performance.now();
+      if(deleteActive){
+        const removed=removeMachine(key);
+        if(removed){
+          const refund=resaleValue(removed.obj.purchaseCost??0n);
+          money+=refund;updateMoney();showToast('Refunded $'+formatAmount(refund));renderGrid();renderBlobs();
         }
-      } else if(selectedHotbar!==null) {
-        placeFromHotbar(index,selectedHotbar);
-      } else if(rotateActive && obj) {
-        obj.direction=(obj.direction+1)%4;
-        wireLayoutsDirty=true;
-        markDirty();
-        renderGrid();
-      } else if (obj?.type==='Dropper') {
-        if(now-obj.lastClick >= 500) {
-          obj.lastClick=now;
-          spawnBlob(key,now);
+        return;
+      }
+      if(moveActive){
+        if(!moveFrom){if(obj){moveFrom=root;renderGrid();showToast('Tap destination');}}
+        else {if(moveMachine(moveFrom,key)){moveFrom=null;renderGrid();}}
+        return;
+      }
+      if(selectedHotbar!==null){placeFromHotbar(index,selectedHotbar);return;}
+      if(rotateActive&&obj){rotateMachine(root);return;}
+      if(obj?.type==='Wire'){
+        obj.shape=(obj.shape+1)%3;
+        obj.manuallyRotated=true;
+        wireLayoutsDirty=true;markDirty();renderGrid();return;
+      }
+      if(['Dropper','AdvancedDropper'].includes(obj?.type)){
+        const cooldown=obj.type==='AdvancedDropper'?250:500;
+        if(now-obj.lastClick>=cooldown){
+          obj.lastClick=now;spawnBlob(root,now);
         }
-      } else if (obj?.type==='Turbine') {
-        obj.enabled=!obj.enabled;
-        obj.lastPower=now;obj.lastUpkeep=now;
-        markDirty();
-        renderGrid();
+      }else if(obj?.type==='Turbine'){
+        obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
+        markDirty();renderGrid();
       }
     }
 
@@ -869,6 +941,8 @@
       $('deleteToggle').setAttribute('aria-pressed', String(deleteActive));
       $('deleteToggle').innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-delete"/></svg>${deleteActive ? '<span class="tool-label">Delete</span>' : ''}`;
       $('rotateToggle').setAttribute('aria-pressed',String(rotateActive));
+      $('moveToggle').setAttribute('aria-pressed',String(moveActive));
+      $('moveToggle').innerHTML='<svg viewBox="0 0 64 64" fill="none" stroke="#427f4a" stroke-width="4" stroke-linecap="round"><path d="M32 7v50M7 32h50m-25-25-7 8m7-8 7 8m-7 42-7-8m7 8 7-8M7 32l8-7m-8 7 8 7m42-7-8-7m8 7-8 7"/></svg>'+(moveActive?'<span class="tool-label">Move</span>':'');
       $('rotateToggle').innerHTML=`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M48 19a23 23 0 1 0 4 18" fill="none" stroke="#286399" stroke-width="5" stroke-linecap="round"/><path d="M46 7v16H30" fill="none" stroke="#286399" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>${rotateActive?'<span class="tool-label">Rotate</span>':''}`;
       const placing = selectedHotbar !== null && !!inventory.hotbar[selectedHotbar];
       document.body.classList.toggle('has-place-tool', placing);
@@ -956,7 +1030,7 @@
       if (!$('backpackLayer').classList.contains('is-open')) {
         if (location.zone !== 'hotbar') return;
         selected = null;
-        deleteActive = false;rotateActive=false;
+        deleteActive = false;rotateActive=false;moveActive=false;moveFrom=null;
         selectedHotbar = selectedHotbar !== location.index && inventory.hotbar[location.index] ? location.index : null;
         renderInventory();renderGrid();
         return;
@@ -975,7 +1049,7 @@
     $('deleteToggle').addEventListener('click', () => {
       if ($('backpackLayer').classList.contains('is-open')) setBackpack(false, false);
       deleteActive = !deleteActive;
-      rotateActive = false;
+      moveActive=false;moveFrom=null;rotateActive = false;
       selectedHotbar = null;
       selected = null;
       renderInventory();renderGrid();
@@ -983,7 +1057,12 @@
     $('rotateToggle').addEventListener('click',()=>{
       if($('backpackLayer').classList.contains('is-open'))setBackpack(false,false);
       rotateActive=!rotateActive;
-      deleteActive=false;selectedHotbar=null;selected=null;
+      moveActive=false;moveFrom=null;deleteActive=false;selectedHotbar=null;selected=null;
+      renderInventory();renderGrid();
+    });
+    $('moveToggle').addEventListener('click',()=>{
+      if($('backpackLayer').classList.contains('is-open'))setBackpack(false,false);
+      moveActive=!moveActive;moveFrom=null;rotateActive=false;deleteActive=false;selectedHotbar=null;selected=null;
       renderInventory();renderGrid();
     });
     function locationAt(x, y) {
@@ -1217,7 +1296,7 @@
       document.body.classList.toggle('bag-open', open);
       selected = null;
       selectedHotbar = null;
-      deleteActive = false;rotateActive=false;
+      deleteActive = false;rotateActive=false;moveActive=false;moveFrom=null;
       renderInventory();renderGrid();
       if (open) $('closeBackpack').focus();
       else if (restoreFocus) bagToggle.focus();
