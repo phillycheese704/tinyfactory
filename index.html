@@ -1146,79 +1146,131 @@
     document.addEventListener('pointerup', pointerEnded);
     document.addEventListener('pointercancel', pointerCancelled);
 
-    // BLOBS: a dot belongs to a tile, moves along belts, and is cashed in by extractors.
-    function spawnBlob(key, now=performance.now()) {
-      if(!placed.has(key) || [...blobs.values()].some(b=>b.key===key)) return false;
+    // Blobs carry value, colour and processing effects along their journey.
+    function spawnBlob(key, now=performance.now()){
+      const dropper=placed.get(key);
+      if(!['Dropper','AdvancedDropper'].includes(dropper?.type)||
+        [...blobs.values()].some(b=>b.key===key))return false;
+      const advanced=dropper.type==='AdvancedDropper';
+      const silver=advanced&&Math.random()<0.09544;
       const id=nextBlobId++;
-      blobs.set(id,{id,key,worth:1n,shiny:false,state:'waiting',arrivedAt:now, collectAt:0});
-      markDirty();renderBlobs();
-      return true;
+      blobs.set(id,{id,key,worth:advanced?(silver?15n:5n):1n,
+        shiny:false,ember:false,color:advanced?(silver?'silver':'bronze'):'black',
+        neon:false,grade:advanced?(silver?'silver':'bronze'):'normal',
+        entryDir:null,fromKey:null,state:'waiting',arrivedAt:now,collectAt:0});
+      markDirty();renderBlobs();return true;
     }
-    function renderBlobs() {
+    function renderBlobs(){
       const layer=$('blobLayer');if(!layer)return;
       const visible=new Set();
-      for (const blob of blobs.values()) {
+      const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',blue:'#4ac1ff',red:'#ff324f'};
+      for(const blob of blobs.values()){
         const [row,col]=coords(blob.key);
-        if(row>=gridRows || col>=gridCols) continue;
+        if(row>=gridRows||col>=gridCols)continue;
         let el=layer.querySelector(`[data-blob="${blob.id}"]`);
-        if(!el) {
+        if(!el){
           el=document.createElement('div');el.className='blob';el.dataset.blob=blob.id;
-          el.innerHTML=`<span class="blob-worth"></span><span class="blob-dot"></span><span class="blob-glint">✦</span>`;
+          el.innerHTML='<span class="blob-worth"></span><span class="blob-dot"></span><span class="blob-glint">✦</span><span class="blob-ember">✷</span>';
           layer.appendChild(el);
         }
         visible.add(String(blob.id));
         el.querySelector('.blob-worth').textContent='$'+formatAmount(blob.worth);
         el.querySelector('.blob-glint').style.display=blob.shiny?'block':'none';
+        el.querySelector('.blob-ember').style.display=blob.ember?'block':'none';
         el.classList.toggle('collecting',blob.state==='collecting');
+        el.classList.toggle('icy',blob.color==='blue');
+        el.classList.toggle('ember',!!blob.ember);
+        el.classList.toggle('lasered',!!blob.neon);
+        const dot=el.querySelector('.blob-dot');
+        const color=palette[blob.color]||palette.black;
+        dot.style.background=color;
+        dot.style.boxShadow=blob.neon?'0 0 8px 3px '+color:blob.ember?'0 0 6px #ff8e42':'1px 2px 0 #858585';
         el.style.left=((col+.5)/gridCols*100)+'%';
         el.style.top=((row+.5)/gridRows*100)+'%';
       }
       layer.querySelectorAll('.blob').forEach(el=>{if(!visible.has(el.dataset.blob))el.remove();});
     }
-    function blobDestination(blob) {
+    function laserPipelineReady(center){
+      const obj=placed.get(center);
+      if(obj?.type!=='LaserCutter')return false;
+      const parts=laserKeys(center,obj.direction);
+      if(!parts[0]||!parts[2])return false;
+      const before=neighbor(parts[0],(obj.direction+2)%4);
+      const after=neighbor(parts[2],obj.direction);
+      return placed.get(before)?.type==='Conveyor'&&placed.get(before)?.direction===obj.direction&&placed.get(after)?.type==='Conveyor';
+    }
+    function canFeedConveyor(from,to,direction){
+      const target=placed.get(to);
+      if(!target)return false;
+      if(['Conveyor','Extractor','Splitter'].includes(target.type))return true;
+      if(processorTypes.has(target.type))return !!processorExit(to,target,from);
+      if(target.type==='LaserPart' && target.segment==='in' &&
+         target.direction===direction && laserPipelineReady(target.parent))return true;
+      return false;
+    }
+    function blobDestination(blob){
       const obj=placed.get(blob.key);if(!obj)return null;
-      if(obj.type==='Conveyor') {
-        const next=neighbor(blob.key,obj.direction),target=next&&placed.get(next);
-        if(target?.type==='Purifier'||target?.type==='Furnace')
-          return processorExit(next,target) && target.direction===obj.direction?next:null;
-        return next && ['Conveyor','Extractor'].includes(target?.type)?next:null;
+      if(obj.type==='Conveyor'){
+        const next=neighbor(blob.key,obj.direction);
+        return next&&canFeedConveyor(blob.key,next,obj.direction)?next:null;
       }
-      if(obj.type==='Purifier'||obj.type==='Furnace')return processorExit(blob.key,obj);
-      if(obj.type==='Dropper') {
-        // Droppers prefer the right, but can feed an adjoining belt or extractor.
-        for(const dir of [1,2,3,0]) {
+      if(processorTypes.has(obj.type))
+        return processorExit(blob.key,obj,blob.fromKey);
+      if(obj.type==='LaserPart'){
+        const center=obj.parent,laser=placed.get(center);
+        if(!laserPipelineReady(center))return null;
+        return obj.segment==='in'?center:neighbor(blob.key,laser.direction);
+      }
+      if(obj.type==='LaserCutter'){
+        return laserPipelineReady(blob.key)?neighbor(blob.key,obj.direction):null;
+      }
+      if(obj.type==='Splitter'){
+        const dirs=Math.random()<.5?[obj.direction,(obj.direction+1)%4]:[(obj.direction+1)%4,obj.direction];
+        for(const dir of dirs){
           const next=neighbor(blob.key,dir);
-          if(next && ['Conveyor','Extractor'].includes(placed.get(next)?.type))return next;
+          if(next&&canFeedConveyor(blob.key,next,dir))return next;
         }
+        return null;
+      }
+      if(['Dropper','AdvancedDropper'].includes(obj.type)){
+        const next=neighbor(blob.key,obj.direction);
+        return next&&canFeedConveyor(blob.key,next,obj.direction)?next:null;
       }
       return null;
     }
-    function moveBlobs(now) {
+    function moveBlobs(now){
       const occupied=new Set([...blobs.values()].map(b=>b.key));
       let changed=false;
-      for(const [id,blob] of blobs) {
-        if(blob.state==='collecting') {
-          if(now>=blob.collectAt) {
-            money+=blob.worth;updateMoney();blobs.delete(id);changed=true;
-          }
+      for(const [id,blob] of blobs){
+        if(blob.state==='collecting'){
+          if(now>=blob.collectAt){money+=blob.worth;updateMoney();blobs.delete(id);changed=true;}
           continue;
         }
-        if(now-blob.arrivedAt<MOVE_MS-25) continue;
+        if(now-blob.arrivedAt<MOVE_MS-25)continue;
         const next=blobDestination(blob);
-        if(!next || occupied.has(next)) continue;
-        occupied.delete(blob.key);occupied.add(next);
-        blob.key=next;blob.arrivedAt=now;changed=true;
+        if(!next||occupied.has(next))continue;
+        const previous=blob.key;
+        occupied.delete(previous);occupied.add(next);
+        blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
-        if(reached?.type==='Purifier') {
+        if(reached?.type==='Purifier'){
           blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
-        } else if(reached?.type==='Furnace') {
-          // Exact integer maths: x1.3, rounded to the nearest whole dollar.
+        } else if(reached?.type==='Furnace'){
           blob.worth=(blob.worth*13n+5n)/10n;
+          blob.ember=true;reached.pulseUntil=now+350;
+        } else if(reached?.type==='CryoChamber'){
+          const power=Math.min(100,reached.charges?.filter(t=>t>now).length||0);
+          const multiplier=power?190+Math.round((power-1)*10/99):175;
+          blob.worth=(blob.worth*BigInt(multiplier)+50n)/100n;
+          blob.color='blue';reached.pulseUntil=now+350;
+        } else if(reached?.type==='LaserCutter'){
+          blob.worth*=2n;blob.neon=true;
+          if(blob.color==='black')blob.color='red';
           reached.pulseUntil=now+350;
         }
-        if(reached?.type==='Extractor') {
+        if(reached?.type==='Extractor'){
           blob.state='collecting';blob.collectAt=now+350;
-          placed.get(next).pulseUntil=now+350;
+          reached.pulseUntil=now+350;
         }
       }
       if(changed)markDirty();
