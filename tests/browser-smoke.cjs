@@ -73,7 +73,32 @@ async function run(){
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();
       await page.locator('#shopToggle').click();
+      const allShop=await page.evaluate(()=>{
+        const children=[...document.getElementById('shopItems').children];
+        const categories=['Production','Processing','Transport','Power'];
+        const sections=children.filter(el=>el.classList.contains('shop-section-heading'));
+        let group=null,previous=null,count=0,sorted=true;
+        for(const el of children){
+          if(el.classList.contains('shop-section-heading')){
+            group=el.dataset.category;previous=null;continue;
+          }
+          if(!el.classList.contains('item')||el.dataset.hidden==='true')continue;
+          const price=prices[el.id.slice(3)];
+          if(el.dataset.category!==group||(previous!==null&&price<previous))sorted=false;
+          previous=price;count++;
+        }
+        return {count,sorted,grouped:document.getElementById('shopItems').classList.contains('is-grouped'),
+          categories:sections.map(el=>el.dataset.category),
+          labels:sections.map(el=>el.querySelector('.shop-section-count').textContent)};
+      });
+      assert.equal(allShop.count,42,'All view must show 42 cards');
+      assert(allShop.grouped&&allShop.sorted,'All view must group machines cheapest-first');
+      assert.deepEqual(allShop.categories,['Production','Processing','Transport','Power']);
+      assert(allShop.labels.every(label=>/\\d+ machines/.test(label)),'Category headers need counts');
       await page.locator('#shopSearch').fill('Mighty');
+      const searched=await page.locator('#shopItems .shop-section-heading')
+        .evaluateAll(headers=>headers.map(h=>h.dataset.category));
+      assert.deepEqual(searched,['Production'],'Search must remove empty category sections');
       assert(await page.locator('#buyMightyDropper').isVisible());
       assert(!await page.locator('#buyDropper').isVisible());
       await page.locator('#shopSearch').fill('');
@@ -81,6 +106,10 @@ async function run(){
       assert(await page.locator('#buyCounterGate').isVisible());
       assert(await page.locator('#buyOverflowDrain').isVisible());
       assert(await page.locator('#buyTimerGate').isVisible());
+      const filteredSections=await page.locator('#shopItems .shop-section-heading')
+        .evaluateAll(headers=>headers.map(h=>h.dataset.category));
+      assert.deepEqual(filteredSections,['Transport'],
+        'Logic filter must show only its non-empty category');
       // WebKit can delay compositing backdrop-filter overlays after a style
       // change; wait for the *rendered* panel rather than a fixed sleep.
       await page.waitForFunction(()=>{
@@ -93,6 +122,44 @@ async function run(){
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
+      await page.screenshot({path:path.join(screenshotDir,
+        profile.name.replace(/\\W+/g,'-')+'-shop-all-grouped.png')});
+      // All category tabs must be price-ordered, not merely the All tab.
+      const tabOrder=await page.evaluate(()=>{
+        const result={};
+        for(const name of ['Production','Processing','Transport','Power']){
+          document.querySelector('#shopTabs [data-tab="'+name+'"]').click();
+          const container=document.getElementById('shopItems');
+          const visible=[...container.children].filter(el=>el.classList.contains('item')&&
+            el.dataset.hidden==='false');
+          result[name]={
+            count:visible.length,
+            noHeadings:container.querySelectorAll('.shop-section-heading').length===0,
+            inCategory:visible.every(el=>el.dataset.category===name),
+            sorted:visible.every((el,index)=>index===0||
+              prices[visible[index-1].id.slice(3)]<=prices[el.id.slice(3)])
+          };
+        }
+        document.querySelector('#shopTabs [data-tab="All"]').click();
+        return result;
+      });
+      for(const [name,result] of Object.entries(tabOrder))
+        assert(result.count>0&&result.noHeadings&&result.inCategory&&result.sorted,
+          name+' tab must be ascending without All-section headings');
+      // Buying a free conveyor raises its next price and should reorder it.
+      await page.locator('#buyConveyor').click();
+      const repriced=await page.evaluate(()=>{
+        const container=document.getElementById('shopItems');
+        const transport=[...container.children].filter(el=>el.classList.contains('item')&&
+          el.dataset.hidden==='false'&&el.dataset.category==='Transport');
+        return {price:String(prices.Conveyor),
+          sorted:transport.every((el,i)=>i===0||
+            prices[transport[i-1].id.slice(3)]<=prices[el.id.slice(3)]),
+          conveyorIndex:transport.findIndex(el=>el.id==='buyConveyor')};
+      });
+      assert.equal(repriced.price,'50','Free conveyor must get its next-purchase price');
+      assert(repriced.sorted&&repriced.conveyorIndex>0,
+        'Repricing must move Conveyor after cheaper transport items');
       const modelChecks=await page.evaluate(()=>{
         const names=['FusionChamber','Quantumifyier','Cloner','Infinifyer','Cleaner',
           'QuantumComputer','MightyDropper','RainbowDropper','TurboDropper','QuantumDropper',
