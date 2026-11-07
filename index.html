@@ -452,7 +452,8 @@
         <select id="sorterGrade">
           <option value="bronze">Bronze</option><option value="silver">Silver</option>
           <option value="gold">Gold</option><option value="diamond">Diamond</option>
-          <option value="normal">Black</option>
+          <option value="normal">Black</option><option value="rainbow">Rainbow</option>
+          <option value="quantum">Quantum</option>
         </select>
       </label>
       <label>Send matching blobs
@@ -478,6 +479,35 @@
         </select>
       </label>
       <div class="sorter-actions"><button type="button" id="valueGateCancel">Cancel</button><button type="button" id="valueGateSave">Save</button></div>
+    </div>
+  </div>
+  <div class="sorter-panel" id="routingPanel" role="dialog" aria-modal="true" aria-label="Advanced routing settings">
+    <div class="sorter-config">
+      <h2 id="routingHeading">Logic settings</h2>
+      <label id="routeForwardWrap">Primary direction
+        <select id="routeForward">
+          <option value="0">↑ Up</option><option value="1">→ Right</option>
+          <option value="2">↓ Down</option><option value="3">← Left</option>
+        </select>
+      </label>
+      <label>Alternate direction
+        <select id="routeBranch">
+          <option value="0">↑ Up</option><option value="1">→ Right</option>
+          <option value="2">↓ Down</option><option value="3">← Left</option>
+        </select>
+      </label>
+      <label id="routeChanceWrap">Chance to use alternate output (%)
+        <input type="number" id="routeChance" min="0" max="100" step="1" value="50">
+      </label>
+      <label id="routeCountWrap">Send every Nth blob to alternate output
+        <input type="number" id="routeCount" min="1" max="9999" step="1" value="3">
+      </label>
+      <label id="routeTimerWrap">Alternate outputs every N seconds
+        <input type="number" id="routeTimer" min="1" max="3600" step="1" value="3">
+      </label>
+      <div class="sorter-actions">
+        <button type="button" id="routingCancel">Cancel</button><button type="button" id="routingSave">Save</button>
+      </div>
     </div>
   </div>
   <script>
@@ -809,10 +839,14 @@
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
             sortGrade:obj.sortGrade,sortDir:obj.sortDir,
+            forwardDir:obj.forwardDir,branchDir:obj.branchDir,branchChance:obj.branchChance,
+            counterN:obj.counterN,counter:obj.counter,timerSeconds:obj.timerSeconds,
             gateThreshold:obj.type==='ValueGate'?String(obj.gateThreshold):undefined,
             gateDir:obj.type==='ValueGate'?obj.gateDir:undefined,
-            batch:obj.type==='ParticleAccelerator'?obj.batch.map(serializeBlob):undefined,
-            pending:obj.type==='ParticleAccelerator'?obj.pending.map(serializeBlob):undefined,
+            batch:obj.batch?.length?obj.batch.slice(0,80).map(b=>({
+              ...serializeBlob(b),releaseIn:b.releaseAt==null?undefined:Math.max(0,b.releaseAt-factoryNow())
+            })):undefined,
+            pending:obj.pending?.length?obj.pending.slice(0,80).map(serializeBlob):undefined,
             batchRemaining:obj.type==='ParticleAccelerator'?obj.batchRemaining:undefined,
             underConveyor:logicTypes.has(obj.type)&&obj.underConveyor?{
               direction:obj.underConveyor.direction,
@@ -891,6 +925,18 @@
           obj.enabled=entry[1].enabled!==false;
           obj.shape=Math.max(0,Math.min(2,Number(entry[1].shape)||0));
           obj.manuallyRotated=!!entry[1].manuallyRotated;
+          obj.forwardDir=Number.isInteger(entry[1].forwardDir)?((entry[1].forwardDir%4)+4)%4:obj.direction;
+          obj.branchDir=Number.isInteger(entry[1].branchDir)?((entry[1].branchDir%4)+4)%4:(obj.direction+1)%4;
+          obj.branchChance=Number.isInteger(entry[1].branchChance)?Math.max(0,Math.min(100,entry[1].branchChance)):50;
+          obj.counterN=Number.isInteger(entry[1].counterN)?Math.max(1,Math.min(9999,entry[1].counterN)):3;
+          obj.counter=Number.isSafeInteger(entry[1].counter)?Math.max(0,entry[1].counter):0;
+          obj.timerSeconds=Number.isInteger(entry[1].timerSeconds)?Math.max(1,Math.min(3600,entry[1].timerSeconds)):3;
+          if(obj.type!=='ParticleAccelerator'){
+            obj.batch=Array.isArray(entry[1].batch)?entry[1].batch.slice(0,80).map(b=>({
+              ...reviveBlob(b),releaseAt:b.releaseIn==null?undefined:factoryNow()+Math.max(0,Number(b.releaseIn)||0)
+            })):[];
+            obj.pending=Array.isArray(entry[1].pending)?entry[1].pending.slice(0,80).map(reviveBlob):[];
+          }
           if(logicTypes.has(obj.type)){
             // Older saves may contain freestanding splitters. Supply a free
             // conveyor underneath them so they behave like belt attachments.
@@ -900,7 +946,7 @@
             obj.underConveyor.manuallyRotated=!!savedBelt?.manuallyRotated;
           }
           if(obj.type==='Sorter'){
-            obj.sortGrade=['normal','bronze','silver','gold','diamond'].includes(entry[1].sortGrade)?entry[1].sortGrade:'diamond';
+            obj.sortGrade=['normal','bronze','silver','gold','diamond','rainbow','quantum'].includes(entry[1].sortGrade)?entry[1].sortGrade:'diamond';
             obj.sortDir=Number.isInteger(entry[1].sortDir)?entry[1].sortDir:((obj.direction+1)%4);
           }
           if(obj.type==='ValueGate'){
@@ -1231,6 +1277,9 @@
           <text x="32" y="34" font-size="22" text-anchor="middle" font-family="sans-serif" font-weight="900" fill="#3d4673">${glyph}</text>
           <circle cx="13" cy="13" r="3" fill="#fff"/><circle cx="51" cy="41" r="3" fill="#fff"/>`);
       }
+      if(type==='MegaPart')return frame(`<rect x="3" y="4" width="58" height="49" rx="7" fill="#bfddea" stroke="#45637b" stroke-width="3"/>
+        <path d="M5 16h54M5 41h54M18 4v49M46 4v49" stroke="#7ea4c2" stroke-width="2.4"/>
+        <circle cx="32" cy="28" r="6" fill="#eee9ff" stroke="#526f9b" stroke-width="2"/>`);
       if (type === 'Wire' && shape > 0) {
         const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4];
         const input=incoming==null?(direction+2)%4:incoming;
@@ -1528,6 +1577,10 @@
       obj.direction=next;obj.manuallyRotated=true;
       if(obj.type==='Sorter')obj.sortDir=(obj.sortDir+1)%4;
       if(obj.type==='ValueGate')obj.gateDir=(obj.gateDir+1)%4;
+      if(['Splitter','CounterGate','OverflowDrain','TimerGate'].includes(obj.type)){
+        obj.branchDir=(obj.branchDir+1)%4;
+        obj.forwardDir=(obj.forwardDir+1)%4;
+      }
       if(obj.type==='LaserCutter')placeLaserParts(root,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(root,obj);
       if(obj.type==='HydraulicPump')placeHydraulicParts(root,obj);
@@ -1547,10 +1600,14 @@
         placed.set(root,obj.underConveyor??machine('Conveyor'));
         obj.underConveyor=newBelt;
         const branchOffset=obj.type==='Sorter'?(obj.sortDir-obj.direction+4)%4:
-          obj.type==='ValueGate'?(obj.gateDir-obj.direction+4)%4:0;
+          obj.type==='ValueGate'?(obj.gateDir-obj.direction+4)%4:
+          (obj.branchDir-obj.direction+4)%4;
+        const forwardOffset=(obj.forwardDir-obj.direction+4)%4;
         obj.direction=newBelt.direction;
         if(obj.type==='Sorter')obj.sortDir=(obj.direction+branchOffset)%4;
         if(obj.type==='ValueGate')obj.gateDir=(obj.direction+branchOffset)%4;
+        obj.branchDir=(obj.direction+branchOffset)%4;
+        obj.forwardDir=(obj.direction+forwardOffset)%4;
         placed.set(to,obj);
         for(const blob of blobs.values())if(blob.key===root)blob.key=to;
         wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
@@ -1872,7 +1929,10 @@
         const autoWireDirs=obj?.type==='Wire'&&!obj.manuallyRotated?wireConnections(key):null;
         const root=rootKey(key),acc=placed.get(root);
         const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):
-          obj?.type==='ValueGate'?'>'+formatAmount(obj.gateThreshold??50n):'';
+          obj?.type==='ValueGate'?'>'+formatAmount(obj.gateThreshold??50n):
+          obj?.type==='CounterGate'?'1/'+(obj.counterN||3):
+          obj?.type==='TimerGate'?(obj.timerSeconds||3)+'s':
+          obj?.type==='Splitter'?(obj.branchChance??50)+'%':'';
         const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
           cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape,autoWireDirs)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
@@ -1909,6 +1969,8 @@
         obj.direction=obj.underConveyor.direction;
         obj.sortDir=(obj.direction+1)%4;
         if(type==='ValueGate')obj.gateDir=(obj.direction+1)%4;
+        obj.forwardDir=obj.direction;
+        obj.branchDir=(obj.direction+1)%4;
       }
       placed.set(key,obj);
       if(type==='LaserCutter')placeLaserParts(key,obj);
@@ -1992,6 +2054,51 @@
       });
       closeValueGate();
     });
+    let editingRouting=null;
+    function closeRouting(){
+      editingRouting=null;$('routingPanel').classList.remove('open');
+    }
+    function openRouting(key){
+      const obj=placed.get(key);
+      if(!['Splitter','CounterGate','OverflowDrain','TimerGate'].includes(obj?.type))return;
+      editingRouting=key;
+      $('routingHeading').textContent=obj.type.replace(/([a-z])([A-Z])/g,'$1 $2')+' settings';
+      $('routeForwardWrap').style.display=obj.type==='Splitter'?'grid':'none';
+      $('routeChanceWrap').style.display=obj.type==='Splitter'?'grid':'none';
+      $('routeCountWrap').style.display=obj.type==='CounterGate'?'grid':'none';
+      $('routeTimerWrap').style.display=obj.type==='TimerGate'?'grid':'none';
+      $('routeForward').value=String(obj.forwardDir??obj.direction);
+      $('routeBranch').value=String(obj.branchDir??((obj.direction+1)%4));
+      $('routeChance').value=String(obj.branchChance??50);
+      $('routeCount').value=String(obj.counterN??3);
+      $('routeTimer').value=String(obj.timerSeconds??3);
+      $('routingPanel').classList.add('open');$('routeBranch').focus();
+    }
+    $('routingCancel').addEventListener('click',closeRouting);
+    $('routingPanel').addEventListener('click',event=>{
+      if(event.target===$('routingPanel'))closeRouting();
+    });
+    $('routingSave').addEventListener('click',()=>{
+      const obj=editingRouting&&placed.get(editingRouting);
+      if(!obj){closeRouting();return;}
+      const forward=Number($('routeForward').value),branch=Number($('routeBranch').value);
+      const chance=Number($('routeChance').value),count=Number($('routeCount').value),
+        timer=Number($('routeTimer').value);
+      if(!Number.isInteger(branch)||branch<0||branch>3||
+        (obj.type==='Splitter'?branch===forward:branch===obj.direction)||
+        !Number.isInteger(forward)||forward<0||forward>3||
+        !Number.isInteger(chance)||chance<0||chance>100||
+        !Number.isInteger(count)||count<1||count>9999||
+        !Number.isInteger(timer)||timer<1||timer>3600){
+        showToast('Please enter valid directions, chance and timing');return;
+      }
+      runBuildAction('Configure '+obj.type,()=>{
+        obj.forwardDir=forward;obj.branchDir=branch;obj.branchChance=chance;
+        obj.counterN=count;obj.timerSeconds=timer;
+        markDirty();renderGrid();
+      });
+      closeRouting();
+    });
     function useGridCell(index){
       if($('shopLayer').classList.contains('is-open')||$('backpackLayer').classList.contains('is-open'))return;
       const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=factoryNow();
@@ -2014,6 +2121,9 @@
       if(rotateActive&&obj){runBuildAction('Rotate machine',()=>rotateMachine(root));return;}
       if(obj?.type==='Sorter'){openSorter(root);return;}
       if(obj?.type==='ValueGate'){openValueGate(root);return;}
+      if(['Splitter','CounterGate','OverflowDrain','TimerGate'].includes(obj?.type)){
+        openRouting(root);return;
+      }
       if(obj?.type==='Wire'){
         runBuildAction('Change wire junction',()=>{
           obj.shape=(obj.shape+1)%3;
@@ -2546,7 +2656,7 @@
         const dirs=Math.random()*100<(obj.branchChance??50)?[side,straight]:[straight,side];
         for(const dir of dirs){
           const next=neighbor(blob.key,dir);
-          if(next&&canFeedConveyor(blob.key,next,dir))return next;
+          if(next&&next!==blob.fromKey&&canFeedConveyor(blob.key,next,dir))return next;
         }
         return null;
       }
@@ -3013,6 +3123,7 @@
         if($('resetPanel').classList.contains('open'))closeResetConfirm();
         else if($('statsPanel').classList.contains('open'))setStatsOpen(false);
         else if($('shopInfoPanel').classList.contains('open'))closeShopInfo();
+        else if($('routingPanel').classList.contains('open'))closeRouting();
         else if(editingSorter!==null)closeSorter();
         else if(editingValueGate!==null)closeValueGate();
         else if($('backpackLayer').classList.contains('is-open'))setBackpack(false);
@@ -3033,7 +3144,7 @@
       }
       if(event.altKey||ctrl||$('shopLayer').classList.contains('is-open')||
          $('backpackLayer').classList.contains('is-open')||
-         ['statsPanel','shopInfoPanel','resetPanel','sorterPanel','valueGatePanel'].some(id=>$(id).classList.contains('open')))
+         ['statsPanel','shopInfoPanel','resetPanel','sorterPanel','valueGatePanel','routingPanel'].some(id=>$(id).classList.contains('open')))
         return;
       const key=event.key.toLowerCase();
       if(/^[1-9]$/.test(key)){event.preventDefault();tapSlot({zone:'hotbar',index:Number(key)-1});}
