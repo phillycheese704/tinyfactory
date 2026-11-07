@@ -200,7 +200,7 @@
     .drag-ghost svg { width: 80%; height: 80%; }
     /* The board uses the whole safe rectangle, not a letterboxed 16x16 square.
        The number of square tiles adapts to the device, keeping installed machines visible. */
-    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; touch-action:none; }
+    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; touch-action:none; transform-origin: top left; }
     body.has-place-tool .factory-grid, body.dragging-to-grid .factory-grid { background: #fefefe; border-color: #797979; box-shadow: 3px 3px 0 #d8d8d8; pointer-events: auto; }
     body.delete-active .factory-grid { pointer-events: auto; }
     .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: none; }
@@ -242,7 +242,6 @@
     .factory-actions button{min-width:30px;height:33px;border:1.5px solid #292929;border-radius:7px;background:#fff;font:900 19px/1 sans-serif;cursor:pointer}
     .factory-actions button:disabled{opacity:.35;cursor:default}
     .factory-actions button[aria-pressed="true"]{background:#ffe19e}
-    .factory-actions #zoomLevel{font:800 11px sans-serif;min-width:32px;text-align:center}
     .stats-config{width:min(680px,96vw);max-height:88dvh;overflow:auto}
     .dialog-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
     .small-close{border:2px solid #9d4848;border-radius:9px;background:#fff0f0;min-width:36px;height:36px;font:800 25px sans-serif;cursor:pointer}
@@ -268,8 +267,6 @@
     .grid-cell.bottleneck-severe{box-shadow:inset 0 0 0 3px #e03434!important;background:#ffe2d8}
     .blob{transition:left .22s linear,top .22s linear;will-change:left,top}
     body.simulation-paused .machine-icon *,body.simulation-paused .blob *{animation-play-state:paused!important}
-    body.pan-mode .grid-cell{cursor:grab;touch-action:none!important}
-    body.pan-mode .factory-grid{touch-action:none!important}
     @media(max-width:580px){.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.factory-actions{right:5px;gap:2px;padding:3px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + var(--hot-slot) + 25px)}.factory-actions button{min-width:27px;height:29px;font-size:16px}.shop-controls{padding:9px 18px 2px}}
     /* VISUAL OVERHAUL — layered metal, luminous glass, conveyor tracks and 3-D depth.
        CSS/SVG only: no WebGL memory pressure, requests, fonts or texture downloads. */
@@ -653,11 +650,6 @@
     <button type="button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo building action" disabled>↶</button>
     <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo building action" disabled>↷</button>
     <button type="button" id="pauseBtn" title="Pause factory (P)" aria-label="Pause simulation" aria-pressed="false">⏸</button>
-    <button type="button" id="panBtn" title="Pan mode" aria-label="Toggle pan mode" aria-pressed="false">✥</button>
-    <button type="button" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
-    <span id="zoomLevel" aria-live="polite">100%</span>
-    <button type="button" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
-    <button type="button" id="zoomReset" title="Reset view" aria-label="Reset zoom and pan">⌂</button>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="sorter-panel" id="statsPanel" role="dialog" aria-modal="true" aria-label="Factory information and lifetime statistics">
@@ -706,9 +698,9 @@
       <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
       <details class="controls-help">
         <summary>Keyboard, touch and controller help</summary>
-        <p><b>Keyboard:</b> 1–9 hotbar · R rotate · M move · X delete · P pause · Ctrl+Z undo · Ctrl+Y redo · Esc back.</p>
+        <p><b>Keyboard:</b> 1–9 hotbar · R rotate · M move · X delete · P pause · Space + drag pan · +/− zoom · 0 reset view · Ctrl+Z undo · Ctrl+Y redo · Esc back.</p>
         <p><b>Controller:</b> D-pad / left stick navigate · A interact · B back · X rotate · Y shop · LB/RB hotbar · LT/RT pages · Start pause · Select statistics · right stick zoom · R3 reset view.</p>
-        <p><b>Touch:</b> Tap to place · drag an inventory item to a tile · pinch with two fingers to zoom · use ✥ pan mode to move the factory. Page arrows sit at the left and right edges.</p>
+        <p><b>Touch:</b> Tap to place · drag an inventory item to a tile · drag the factory to pan · pinch with two fingers to zoom. The shop, inventory and page arrows stay fixed.</p>
       </details>
     </section>
   </div>
@@ -1412,53 +1404,96 @@
       setTimeout(()=>document.body.classList.remove('resetting'),950);
     }
 
-    // Use every available row and column of square tiles, while respecting the
-    // actual header, money display, hotbar labels and iPad Safari safe area.
-    // Zoom and pan operate on the whole board so tile coordinates and blob
-    // overlays stay in sync; touch uses two fingers for pinch-to-zoom.
-    let viewZoom=1,panX=0,panY=0,panMode=false,spaceHeld=false;
-    let suppressGridClick=false,panPointer=null,pinchStart=null;
+    // Only the board is transformed. The shop, hotbar and HUD are siblings.
+    // Top-left transform origin lets zoom hold the exact cursor/pinch anchor.
+    const factoryBoard=$('factoryGrid');
     const activeViewTouches=new Map();
-    function updateViewport(){
-      const grid=$('factoryGrid');
-      grid.style.transform='translate('+panX+'px,'+panY+'px) scale('+viewZoom+')';
-      grid.style.transformOrigin='center center';
-      $('zoomLevel').textContent=Math.round(viewZoom*100)+'%';
+    const VIEW_DRAG_THRESHOLD=6;
+    let viewZoom=1,panX=0,panY=0,spaceHeld=false;
+    let suppressGridClick=false,dragPointer=null,pinchStart=null;
+    let viewBounds={left:0,right:window.innerWidth,top:0,bottom:window.innerHeight};
+
+    function clampViewZoom(value){
+      return Math.max(.7,Math.min(2.6,Math.round(value*100)/100));
     }
-    function setZoom(target){
-      viewZoom=Math.max(.7,Math.min(2.6,Math.round(target*100)/100));
+    function keepBoardReachable(){
+      // Without on-screen camera buttons, touch users must never lose
+      // the entire board outside the interactive area.
+      const width=parseFloat(factoryBoard.style.width)*viewZoom;
+      const height=parseFloat(factoryBoard.style.height)*viewZoom;
+      if(!(width>0&&height>0))return;
+      const left=parseFloat(factoryBoard.style.left)||0;
+      const top=parseFloat(factoryBoard.style.top)||0;
+      const visibleX=Math.min(80,width*.35);
+      const visibleY=Math.min(80,height*.35);
+      panX=Math.max(viewBounds.left+visibleX-left-width,
+        Math.min(viewBounds.right-visibleX-left,panX));
+      panY=Math.max(viewBounds.top+visibleY-top-height,
+        Math.min(viewBounds.bottom-visibleY-top,panY));
+    }
+    function updateViewport(){
+      keepBoardReachable();
+      factoryBoard.style.transform=`translate(${panX}px, ${panY}px) scale(${viewZoom})`;
+    }
+    function zoomAt(target,clientX,clientY){
+      const next=clampViewZoom(target);
+      if(next===viewZoom)return;
+      const rect=factoryBoard.getBoundingClientRect();
+      const localX=(clientX-rect.left)/viewZoom;
+      const localY=(clientY-rect.top)/viewZoom;
+      panX+=(viewZoom-next)*localX;
+      panY+=(viewZoom-next)*localY;
+      viewZoom=next;
       updateViewport();
     }
-    function setPanMode(on){
-      panMode=on;
-      document.body.classList.toggle('pan-mode',on);
-      $('panBtn').setAttribute('aria-pressed',String(on));
-      if(on)clearPlacementPreview();
+    function setZoom(target){
+      zoomAt(target,window.innerWidth/2,window.innerHeight/2);
     }
-    $('zoomIn').addEventListener('click',()=>setZoom(viewZoom+.2));
-    $('zoomOut').addEventListener('click',()=>setZoom(viewZoom-.2));
-    $('zoomReset').addEventListener('click',()=>{viewZoom=1;panX=0;panY=0;updateViewport();});
-    $('panBtn').addEventListener('click',()=>setPanMode(!panMode));
-    const factoryBoard=$('factoryGrid');
+    function resetView(){
+      viewZoom=1;panX=0;panY=0;updateViewport();
+    }
+    function captureViewPointer(id){
+      try{factoryBoard.setPointerCapture(id);}catch{}
+    }
+    function releaseViewPointer(id){
+      try{if(factoryBoard.hasPointerCapture?.(id))factoryBoard.releasePointerCapture(id);}catch{}
+    }
+    function beginPinch(){
+      const [a,b]=[...activeViewTouches.values()];
+      const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+      const rect=factoryBoard.getBoundingClientRect();
+      pinchStart={
+        distance:Math.hypot(a.x-b.x,a.y-b.y)||1,zoom:viewZoom,
+        baseX:rect.left-panX,baseY:rect.top-panY,
+        localX:(cx-rect.left)/viewZoom,localY:(cy-rect.top)/viewZoom
+      };
+      dragPointer=null;
+      suppressGridClick=true;
+      clearPlacementPreview();
+      for(const id of activeViewTouches.keys())captureViewPointer(id);
+    }
+    // Mouse wheel and trackpad pinch zoom around their actual screen position.
     factoryBoard.addEventListener('wheel',event=>{
       event.preventDefault();
-      setZoom(viewZoom*(event.deltaY<0?1.1:.9));
+      if(Number.isFinite(event.deltaY))
+        zoomAt(viewZoom*Math.exp(-event.deltaY*.0015),event.clientX,event.clientY);
     },{passive:false});
     factoryBoard.addEventListener('pointerdown',event=>{
+      if(!dragPointer&&!activeViewTouches.size)suppressGridClick=false;
       if(event.pointerType==='touch'){
         activeViewTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
-        if(activeViewTouches.size===2){
-          const [a,b]=[...activeViewTouches.values()];
-          pinchStart={distance:Math.hypot(a.x-b.x,a.y-b.y)||1,
-            zoom:viewZoom,centerX:(a.x+b.x)/2,centerY:(a.y+b.y)/2,panX,panY};
-          suppressGridClick=true;
-        }
+        if(activeViewTouches.size===2){beginPinch();event.preventDefault();return;}
+        if(activeViewTouches.size>2)return;
       }
-      if(panMode||event.button===1||spaceHeld){
-        try{factoryBoard.setPointerCapture(event.pointerId);}catch{}
-        panPointer={id:event.pointerId,x:event.clientX,y:event.clientY,startX:panX,startY:panY};
-        suppressGridClick=true;
-        event.preventDefault();
+      if(event.button!==0&&event.button!==1)return;
+      const immediate=event.button===1||spaceHeld;
+      dragPointer={
+        id:event.pointerId,x:event.clientX,y:event.clientY,
+        startPanX:panX,startPanY:panY,moving:immediate
+      };
+      if(immediate){
+        suppressGridClick=true;clearPlacementPreview();
+        captureViewPointer(event.pointerId);event.preventDefault();
       }
     });
     factoryBoard.addEventListener('pointermove',event=>{
@@ -1466,29 +1501,49 @@
         activeViewTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
       if(pinchStart&&activeViewTouches.size>=2){
         const [a,b]=[...activeViewTouches.values()];
-        setZoom(pinchStart.zoom*Math.hypot(a.x-b.x,a.y-b.y)/pinchStart.distance);
-        panX=pinchStart.panX+(a.x+b.x)/2-pinchStart.centerX;
-        panY=pinchStart.panY+(a.y+b.y)/2-pinchStart.centerY;
-        updateViewport();suppressGridClick=true;event.preventDefault();
-      }else if(panPointer?.id===event.pointerId){
-        panX=panPointer.startX+event.clientX-panPointer.x;
-        panY=panPointer.startY+event.clientY-panPointer.y;
-        updateViewport();suppressGridClick=true;event.preventDefault();
+        const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+        const distance=Math.hypot(a.x-b.x,a.y-b.y)||1;
+        viewZoom=clampViewZoom(pinchStart.zoom*distance/pinchStart.distance);
+        panX=cx-pinchStart.baseX-pinchStart.localX*viewZoom;
+        panY=cy-pinchStart.baseY-pinchStart.localY*viewZoom;
+        updateViewport();
+        suppressGridClick=true;event.preventDefault();return;
       }
+      if(dragPointer?.id!==event.pointerId)return;
+      const dx=event.clientX-dragPointer.x,dy=event.clientY-dragPointer.y;
+      if(!dragPointer.moving){
+        if(Math.hypot(dx,dy)<VIEW_DRAG_THRESHOLD)return;
+        dragPointer.moving=true;
+        suppressGridClick=true;clearPlacementPreview();
+        captureViewPointer(event.pointerId);
+      }
+      panX=dragPointer.startPanX+dx;
+      panY=dragPointer.startPanY+dy;
+      updateViewport();
+      event.preventDefault();
     });
     function finishViewPointer(event){
       activeViewTouches.delete(event.pointerId);
-      if(activeViewTouches.size<2)pinchStart=null;
-      if(panPointer?.id===event.pointerId){
-        panPointer=null;
-        try{factoryBoard.releasePointerCapture(event.pointerId);}catch{}
+      if(pinchStart&&activeViewTouches.size<2){
+        pinchStart=null;
+        // After a pinch, the remaining finger can continue to pan.
+        if(activeViewTouches.size===1){
+          const [id,pos]=[...activeViewTouches.entries()][0];
+          dragPointer={id,x:pos.x,y:pos.y,startPanX:panX,startPanY:panY,moving:true};
+        }
+      }else if(pinchStart&&activeViewTouches.size===2){
+        // Rebase when a third contact is lifted.
+        beginPinch();
       }
-      if(panMode||suppressGridClick){
-        setTimeout(()=>{if(!panPointer&&!pinchStart)suppressGridClick=false;},30);
-      }
+      if(dragPointer?.id===event.pointerId)dragPointer=null;
+      releaseViewPointer(event.pointerId);
+      if(suppressGridClick)
+        setTimeout(()=>{if(!dragPointer&&!pinchStart)suppressGridClick=false;},80);
     }
     factoryBoard.addEventListener('pointerup',finishViewPointer);
     factoryBoard.addEventListener('pointercancel',finishViewPointer);
+
+    // Responsive board sizing respects fixed screen-space controls.
     function fitFactoryGrid() {
       const header = document.querySelector('.topbar').getBoundingClientRect();
       const balance = $('balance').getBoundingClientRect();
@@ -1497,6 +1552,7 @@
       const viewportBottom = window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
       const top = Math.max(header.bottom, balance.bottom) + 8;
       const bottom = Math.min(viewportBottom, hotbar.top - 34);
+      viewBounds={left:0,right:Math.min(viewportWidth,window.innerWidth),top,bottom};
       const usableWidth = Math.max(0, Math.min(viewportWidth, window.innerWidth) - 16);
       const usableHeight = Math.max(0, bottom - top);
       // Start with at least 16 tiles along the shorter usable dimension, then
@@ -2432,7 +2488,7 @@ function renderMachineFrame(type,inside,classes=''){
     }
     function showPlacementPreview(index,typeOverride=null){
       const type=typeOverride??(selectedHotbar!==null?inventory.hotbar[selectedHotbar]:null);
-      if(!type||panMode){clearPlacementPreview();return;}
+      if(!type||dragPointer?.moving||pinchStart){clearPlacementPreview();return;}
       const valid=canOccupy(cellKey(index),type,1);
       clearPlacementPreview();
       lastPreviewIndex=index;
@@ -3819,7 +3875,7 @@ function renderMachineFrame(type,inside,classes=''){
         else if($('shopLayer').classList.contains('is-open'))setShop(false);
         else{
           selectedHotbar=null;deleteActive=false;moveActive=false;moveFrom=null;rotateActive=false;
-          setPanMode(false);clearPlacementPreview();renderInventory();renderGrid();
+          clearPlacementPreview();renderInventory();renderGrid();
         }
         return;
       }
@@ -3841,6 +3897,9 @@ function renderMachineFrame(type,inside,classes=''){
       else if(key==='m'){$('moveToggle').click();}
       else if(key==='x'){$('deleteToggle').click();}
       else if(key==='p'){$('pauseBtn').click();}
+      else if(key==='0'){event.preventDefault();resetView();}
+      else if(key==='+'||key==='='){event.preventDefault();setZoom(viewZoom+.2);}
+      else if(key==='-'){event.preventDefault();setZoom(viewZoom-.2);}
       else if(event.code==='Space'&&!event.repeat){
         spaceHeld=true;event.preventDefault();
       }
@@ -3911,7 +3970,7 @@ function renderMachineFrame(type,inside,classes=''){
       else if($('backpackLayer').classList.contains('is-open'))setBackpack(false);
       else{
         selectedHotbar=null;deleteActive=false;rotateActive=false;moveActive=false;moveFrom=null;
-        setPanMode(false);renderInventory();renderGrid();
+        renderInventory();renderGrid();
       }
     }
     function setGamepadCursor(index){
@@ -4003,7 +4062,7 @@ function renderMachineFrame(type,inside,classes=''){
         if(edge(7))$('nextPage').click();
         if(edge(8))setStatsOpen(true);
         if(edge(9))$('pauseBtn').click();
-        if(edge(11))$('zoomReset').click();
+        if(edge(11))resetView();
         const zoomAxis=pad.axes?.[3]??0;
         if(Math.abs(zoomAxis)>.7&&now-gamepadLastZoom>200){
           setZoom(viewZoom+(zoomAxis<0?.1:-.1));gamepadLastZoom=now;
