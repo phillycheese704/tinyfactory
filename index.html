@@ -201,7 +201,8 @@
     .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; }
     body.has-place-tool .factory-grid, body.dragging-to-grid .factory-grid { background: #fefefe; border-color: #797979; box-shadow: 3px 3px 0 #d8d8d8; pointer-events: auto; }
     body.delete-active .factory-grid { pointer-events: auto; }
-    .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: manipulation; }
+    .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: none; }
+    .world{overflow:hidden;}
     body.has-place-tool .grid-cell, body.dragging-to-grid .grid-cell { border-right: 1px dashed #dedede; border-bottom: 1px dashed #dedede; }
     body.has-place-tool .grid-cell.end-col, body.dragging-to-grid .grid-cell.end-col { border-right: 0; }
     body.has-place-tool .grid-cell.end-row, body.dragging-to-grid .grid-cell.end-row { border-bottom: 0; }
@@ -923,6 +924,77 @@
 
     // Use every available row and column of square tiles, while respecting the
     // actual header, money display, hotbar labels and iPad Safari safe area.
+    // Zoom and pan operate on the whole board so tile coordinates and blob
+    // overlays stay in sync; touch uses two fingers for pinch-to-zoom.
+    let viewZoom=1,panX=0,panY=0,panMode=false,spaceHeld=false;
+    let suppressGridClick=false,panPointer=null,pinchStart=null;
+    const activeViewTouches=new Map();
+    function updateViewport(){
+      const grid=$('factoryGrid');
+      grid.style.transform='translate('+panX+'px,'+panY+'px) scale('+viewZoom+')';
+      grid.style.transformOrigin='center center';
+      $('zoomLevel').textContent=Math.round(viewZoom*100)+'%';
+    }
+    function setZoom(target){
+      viewZoom=Math.max(.7,Math.min(2.6,Math.round(target*100)/100));
+      updateViewport();
+    }
+    function setPanMode(on){
+      panMode=on;
+      document.body.classList.toggle('pan-mode',on);
+      $('panBtn').setAttribute('aria-pressed',String(on));
+      if(on)clearPlacementPreview();
+    }
+    $('zoomIn').addEventListener('click',()=>setZoom(viewZoom+.2));
+    $('zoomOut').addEventListener('click',()=>setZoom(viewZoom-.2));
+    $('zoomReset').addEventListener('click',()=>{viewZoom=1;panX=0;panY=0;updateViewport();});
+    $('panBtn').addEventListener('click',()=>setPanMode(!panMode));
+    const factoryBoard=$('factoryGrid');
+    factoryBoard.addEventListener('wheel',event=>{
+      event.preventDefault();
+      setZoom(viewZoom*(event.deltaY<0?1.1:.9));
+    },{passive:false});
+    factoryBoard.addEventListener('pointerdown',event=>{
+      if(event.pointerType==='touch'){
+        activeViewTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+        if(activeViewTouches.size===2){
+          const [a,b]=[...activeViewTouches.values()];
+          pinchStart={distance:Math.hypot(a.x-b.x,a.y-b.y)||1,
+            zoom:viewZoom,centerX:(a.x+b.x)/2,centerY:(a.y+b.y)/2,panX,panY};
+          suppressGridClick=true;
+        }
+      }
+      if(panMode||event.button===1||spaceHeld){
+        panPointer={id:event.pointerId,x:event.clientX,y:event.clientY,startX:panX,startY:panY};
+        suppressGridClick=true;
+        event.preventDefault();
+      }
+    });
+    factoryBoard.addEventListener('pointermove',event=>{
+      if(activeViewTouches.has(event.pointerId))
+        activeViewTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      if(pinchStart&&activeViewTouches.size>=2){
+        const [a,b]=[...activeViewTouches.values()];
+        setZoom(pinchStart.zoom*Math.hypot(a.x-b.x,a.y-b.y)/pinchStart.distance);
+        panX=pinchStart.panX+(a.x+b.x)/2-pinchStart.centerX;
+        panY=pinchStart.panY+(a.y+b.y)/2-pinchStart.centerY;
+        updateViewport();suppressGridClick=true;event.preventDefault();
+      }else if(panPointer?.id===event.pointerId){
+        panX=panPointer.startX+event.clientX-panPointer.x;
+        panY=panPointer.startY+event.clientY-panPointer.y;
+        updateViewport();suppressGridClick=true;event.preventDefault();
+      }
+    });
+    function finishViewPointer(event){
+      activeViewTouches.delete(event.pointerId);
+      if(activeViewTouches.size<2)pinchStart=null;
+      if(panPointer?.id===event.pointerId)panPointer=null;
+      if(panMode||suppressGridClick){
+        setTimeout(()=>{if(!panPointer&&!pinchStart)suppressGridClick=false;},30);
+      }
+    }
+    factoryBoard.addEventListener('pointerup',finishViewPointer);
+    factoryBoard.addEventListener('pointercancel',finishViewPointer);
     function fitFactoryGrid() {
       const header = document.querySelector('.topbar').getBoundingClientRect();
       const balance = $('balance').getBoundingClientRect();
@@ -952,6 +1024,7 @@
         gridRows = rows;
         buildGrid();
       }
+      updateViewport();
     }
     window.addEventListener('resize', fitFactoryGrid);
     window.visualViewport?.addEventListener('resize', fitFactoryGrid);
@@ -2616,16 +2689,70 @@
     bagToggle.addEventListener('click', () => setBackpack(!$('backpackLayer').classList.contains('is-open')));
     $('closeBackpack').addEventListener('click', () => setBackpack(false));
     $('backpackScrim').addEventListener('click', () => setBackpack(false));
-    document.addEventListener('keydown', event => {
-      if(event.key==='Escape'&&editingSorter!==null){closeSorter();return;}
-      if(event.key==='Escape'&&editingValueGate!==null){closeValueGate();return;}
-      if (event.key === 'Escape') {
-        if ($('backpackLayer').classList.contains('is-open')) setBackpack(false);
-        else if ($('shopLayer').classList.contains('is-open')) setShop(false);
+    document.addEventListener('keydown',event=>{
+      const editing=event.target?.closest?.('input,select,textarea,[contenteditable="true"]');
+      if(event.key==='Escape'){
+        if($('resetPanel').classList.contains('open'))closeResetConfirm();
+        else if($('statsPanel').classList.contains('open'))setStatsOpen(false);
+        else if($('shopInfoPanel').classList.contains('open'))closeShopInfo();
+        else if(editingSorter!==null)closeSorter();
+        else if(editingValueGate!==null)closeValueGate();
+        else if($('backpackLayer').classList.contains('is-open'))setBackpack(false);
+        else if($('shopLayer').classList.contains('is-open'))setShop(false);
+        else{
+          selectedHotbar=null;deleteActive=false;moveActive=false;moveFrom=null;rotateActive=false;
+          setPanMode(false);clearPlacementPreview();renderInventory();renderGrid();
+        }
+        return;
+      }
+      if(editing)return;
+      const ctrl=event.ctrlKey||event.metaKey;
+      if(ctrl&&!event.altKey&&event.key.toLowerCase()==='z'){
+        event.preventDefault();travelHistory(event.shiftKey);return;
+      }
+      if(ctrl&&!event.altKey&&event.key.toLowerCase()==='y'){
+        event.preventDefault();travelHistory(true);return;
+      }
+      if(event.altKey||ctrl||$('shopLayer').classList.contains('is-open')||
+         $('backpackLayer').classList.contains('is-open')||
+         ['statsPanel','shopInfoPanel','resetPanel','sorterPanel','valueGatePanel'].some(id=>$(id).classList.contains('open')))
+        return;
+      const key=event.key.toLowerCase();
+      if(/^[1-9]$/.test(key)){event.preventDefault();tapSlot({zone:'hotbar',index:Number(key)-1});}
+      else if(key==='r'){$('rotateToggle').click();}
+      else if(key==='m'){$('moveToggle').click();}
+      else if(key==='x'){$('deleteToggle').click();}
+      else if(key==='p'){$('pauseBtn').click();}
+      else if(event.code==='Space'&&!event.repeat){
+        spaceHeld=true;event.preventDefault();
       }
     });
+    document.addEventListener('keyup',event=>{if(event.code==='Space')spaceHeld=false;});
+    window.addEventListener('blur',()=>{spaceHeld=false;});
 
-    // Long press (3 seconds) the money display to clear local data on iPad or desktop.
+    // Reset now requires a second, typed confirmation; a stray long press
+    // cannot erase an entire factory.
+    function openResetConfirm(){
+      $('resetConfirmText').value='';
+      $('confirmReset').disabled=true;
+      $('resetPanel').classList.add('open');
+      $('resetConfirmText').focus();
+    }
+    function closeResetConfirm(){
+      $('resetPanel').classList.remove('open');
+    }
+    $('resetConfirmText').addEventListener('input',()=>{
+      $('confirmReset').disabled=$('resetConfirmText').value.trim().toUpperCase()!=='RESET';
+    });
+    $('cancelReset').addEventListener('click',closeResetConfirm);
+    $('resetPanel').addEventListener('click',event=>{
+      if(event.target===$('resetPanel'))closeResetConfirm();
+    });
+    $('confirmReset').addEventListener('click',()=>{
+      if($('resetConfirmText').value.trim().toUpperCase()!=='RESET')return;
+      closeResetConfirm();setSimulationPaused(false);resetGame();
+    });
+    // Long press (3 seconds) the money display to open a reset confirmation.
     const balance=$('balance');
     let resetHold=null,holdTimer=null;
     function cancelMoneyHold(){
@@ -2641,7 +2768,7 @@
       try{balance.setPointerCapture(event.pointerId);}catch{}
       holdTimer=setTimeout(()=>{
         if(resetHold && !$('shopLayer').classList.contains('is-open')){
-          cancelMoneyHold();resetGame();
+          cancelMoneyHold();openResetConfirm();
         }
       },3000);
     });
