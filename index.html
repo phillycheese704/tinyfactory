@@ -419,7 +419,22 @@
       // Refund 65% of the amount paid, rounding DOWN to a $10 increment.
       return (purchaseCost * 65n / 100n / 10n) * 10n;
     }
-    let money = 0n; // Currency earning/spending will be added with factory gameplay.
+    let money = 0n; // Ordinary exact cash is still a BigInt.
+    // Beyond practical BigInt sizes, represent enormous test balances as
+    // coefficient × 10^exponent. Even a googolplex only needs 101 exponent digits.
+    const GOOGOLPLEX_EXPONENT=10n**100n;
+    const giantBalance=new Map(); // exponent string -> positive BigInt coefficient
+    function hasGiantBalance(){
+      return [...giantBalance.values()].some(coefficient=>coefficient>0n);
+    }
+    function canAfford(price){
+      return money>=price || hasGiantBalance();
+    }
+    function creditGiant(coefficient,exponent){
+      if(coefficient<=0n || exponent<0n)throw Error('Amount must be positive');
+      const key=String(exponent);
+      giantBalance.set(key,(giantBalance.get(key)||0n)+coefficient);
+    }
     // Only the last 10 seconds count toward the net income indicator.
     // Keep this transient; a saved balance is not money earned on page load.
     const MONEY_TREND_WINDOW_MS = 10000;
@@ -483,6 +498,7 @@
       try{
         const data={
           version:1,pricingVersion:2,money:String(money),
+          giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
           prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
@@ -516,6 +532,15 @@
         const data=JSON.parse(raw);
         if(data?.version!==1)return;
         money=parseMoney(data.money);
+        giantBalance.clear();
+        if(Array.isArray(data.giantBalance)){
+          for(const entry of data.giantBalance.slice(0,16)){
+            if(!Array.isArray(entry)||!/^\\d{1,110}$/.test(String(entry[0]))||
+               !/^\\d{1,40}$/.test(String(entry[1])))continue;
+            const exponent=BigInt(entry[0]),coefficient=BigInt(entry[1]);
+            if(exponent>=1000n&&coefficient>0n)creditGiant(coefficient,exponent);
+          }
+        }
         // Retain existing machines, stacks, costs and shop price on rename.
         const migrateType=type=>{
           if(type==='Upgraded'){markDirty();return 'Upgrader';}
@@ -607,7 +632,7 @@
     function resetGame(){
       document.body.classList.remove('money-holding');
       document.body.classList.add('resetting');
-      money=0n;clearMoneyTrend();placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
+      money=0n;giantBalance.clear();clearMoneyTrend();placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
       for(let i=0;i<HOTBAR_SIZE;i++){
         inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
       }
@@ -1169,6 +1194,74 @@
       const whole=amount/scale,decimal=(amount%scale)*10n/scale;
       return sign+whole+(decimal>0n&&whole<100n?'.'+decimal:'')+moneyUnits[index];
     }
+    function describeGiantExponent(exponent){
+      if(exponent===GOOGOLPLEX_EXPONENT)return '1e100';
+      if(exponent>GOOGOLPLEX_EXPONENT&&exponent-GOOGOLPLEX_EXPONENT<1000000n)
+        return '1e100+'+(exponent-GOOGOLPLEX_EXPONENT);
+      const digits=String(exponent);
+      if(digits.length<=6)return digits;
+      return digits[0]+(digits[1]!=='0'?'.'+digits[1]:'')+'e'+(digits.length-1);
+    }
+    function formatBalance(){
+      let largestExponent=null,largestCoefficient=0n;
+      for(const [exp,coefficient] of giantBalance){
+        if(coefficient<=0n)continue;
+        const exponent=BigInt(exp);
+        if(largestExponent===null||exponent>largestExponent){
+          largestExponent=exponent;
+          largestCoefficient=coefficient;
+        }
+      }
+      if(largestExponent===null)return formatAmount(money);
+      // Named shorthand for the exact benchmark: 10^(10^100).
+      if(largestExponent===GOOGOLPLEX_EXPONENT && largestCoefficient<1000n)
+        return largestCoefficient+'Gpx';
+      const digits=String(largestCoefficient);
+      const exponent=largestExponent+BigInt(digits.length-1);
+      const mantissa=digits[0]+(digits.length>1&&digits[1]!=='0'?'.'+digits[1]:'');
+      return mantissa+'e'+(exponent<1000000n?String(exponent):
+        '('+describeGiantExponent(exponent)+')');
+    }
+    // A small test-only entry point avoids ever constructing 10^(10^100)
+    // as a BigInt. Values remain real spendable balances in game logic.
+    function parseTestingAmount(value){
+      const input=String(value).trim().replace(/[$,_\s]/g,'');
+      if(/^(googolplex|gpx|10\^\(10\^100\))$/i.test(input))
+        return {coefficient:1n,exponent:GOOGOLPLEX_EXPONENT};
+      const gpx=input.match(/^(\d{1,30})gpx$/i);
+      if(gpx)return {coefficient:BigInt(gpx[1]),exponent:GOOGOLPLEX_EXPONENT};
+      const nested=input.match(/^(\d{1,30})e\(1e100(?:\+(\d{1,6}))?\)$/i);
+      if(nested)return {coefficient:BigInt(nested[1]),
+        exponent:GOOGOLPLEX_EXPONENT+BigInt(nested[2]||0)};
+      const scientific=input.match(/^(\d{1,30})(?:\.(\d{1,6}))?e(\d{1,110})$/i);
+      if(scientific){
+        const fraction=scientific[2]||'';
+        return {coefficient:BigInt(scientific[1]+fraction),
+          exponent:BigInt(scientific[3])-BigInt(fraction.length)};
+      }
+      const compact=input.match(/^(\d{1,30})(?:\.(\d{1,6}))?([A-Za-z]{1,4})?$/);
+      if(!compact)throw Error('Try 1Qa, 1e100, 1e1000, googolplex or 2e(1e100+1)');
+      const suffix=compact[3]?moneyUnits.findIndex(unit=>unit.toLowerCase()===compact[3].toLowerCase()):0;
+      if(suffix<0)throw Error('Unknown amount abbreviation');
+      const fraction=compact[2]||'';
+      return {coefficient:BigInt(compact[1]+fraction),
+        exponent:BigInt(suffix*3-fraction.length)};
+    }
+    function changeTestBalance(input,replace=false){
+      const {coefficient,exponent}=parseTestingAmount(input);
+      if(coefficient<=0n||exponent<0n)throw Error('Enter a positive whole-dollar amount');
+      if(replace){money=0n;giantBalance.clear();}
+      if(exponent<=300n)money+=coefficient*10n**exponent;
+      else creditGiant(coefficient,exponent);
+      if(replace)clearMoneyTrend();
+      markDirty();updateMoney();saveState();
+      return '$'+formatBalance();
+    }
+    // Intended for local testing; no built-in cheat control on the normal UI.
+    window.tinyFactoryTesting=Object.freeze({
+      setBalance:input=>changeTestBalance(input,true),
+      addMoney:input=>changeTestBalance(input,false)
+    });
     function formatPrice(value) { return value === 0n ? 'FREE' : '$' + formatAmount(value); }
     function clearMoneyTrend(){
       moneyTransactions.length=0;
@@ -1188,15 +1281,15 @@
       const description=direction==='up'?'Earning more than spending':
         direction==='down'?'Spending more than earning':'No net change';
       arrow.title=description+' over the last 10 seconds';
-      $('balance').setAttribute('aria-label','Money: $'+formatAmount(money)+'; '+description.toLowerCase());
+      $('balance').setAttribute('aria-label','Money: $'+formatBalance()+'; '+description.toLowerCase());
     }
     function updateMoney(){
       const now=performance.now();
       if(lastTrackedMoney!==null && money!==lastTrackedMoney)
         moneyTransactions.push({time:now,change:money-lastTrackedMoney});
       lastTrackedMoney=money;
-      $('balanceAmount').textContent='$'+formatAmount(money);
-      $('shopMoney').textContent='$'+formatAmount(money);
+      $('balanceAmount').textContent='$'+formatBalance();
+      $('shopMoney').textContent='$'+formatBalance();
       refreshMoneyTrend(now);
     }
     function showToast(message) {
@@ -1440,7 +1533,7 @@
       const location=nextFreeSlot(item);
       if(!location) {showToast('Inventory full');return;}
       const price=prices[item];
-      if(money<price) {showToast('Not enough money');return;}
+      if(!canAfford(price)) {showToast('Not enough money');return;}
       money-=price;
       inventory[location.zone][location.index]=item;
       if(location.zone==='hotbar')inventoryCosts.hotbar[location.index].push(price);
