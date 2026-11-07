@@ -613,8 +613,16 @@
       markDirty();renderGrid();
     });
     setInterval(()=>{renderStats();if(bottleneckVisible)renderGrid();},1000);
-    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n,ValueGate:10n};
+    const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n,ValueGate:10n,FusionChamber:40000n,Quantumifyier:2500000n,Cloner:5000000n,Infinifyer:1000000000000000n,Cleaner:2000n,QuantumComputer:100000000000000000000n,MightyDropper:550000n,RainbowDropper:50000000n,TurboDropper:15000000n,QuantumDropper:1000000000000000n,InfiDropper:1000000000000000000n,FusionReactor:10000000000000000n,SolarField:500000n,Recycler:2000000n,DysonSphere:155000000000000000000n,AdvancedConveyor:75n,HyperConveyor:250n,WireLift:50n,CounterGate:10n,OverflowDrain:10n,TimerGate:50n,Supercharger:1000000000000000000000000000000000000000000000000000000000000000n,Singularity:10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000n,DimensionalRift:10000000000000000n};
     const prices = {...initialPrices};
+    const fixedPriceMachines=new Set(['Wire','WireLift','Splitter','Sorter','ValueGate',
+      'CounterGate','OverflowDrain','TimerGate']);
+    function nextMachinePrice(type,paid){
+      if(fixedPriceMachines.has(type))return initialPrices[type];
+      if(paid===0n)return type==='Conveyor'?50n:type==='Extractor'?50n:1n;
+      const next=(paid*11n+9n)/10n;
+      return type==='Conveyor'&&next>2500n?2500n:next;
+    }
     let selected = null; // Inventory source, used while the backpack is open.
     let selectedHotbar = null; // Item chosen for placement on the factory grid.
     let deleteActive = false;
@@ -768,7 +776,7 @@
       if(!saveDirty)return;
       try{
         const data={
-          version:1,pricingVersion:2,money:String(money),
+          version:1,pricingVersion:3,money:String(money),
           stats:persistStats(),bottleneckVisible,
           giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
           prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
@@ -829,12 +837,12 @@
         for(const [key,initial] of Object.entries(initialPrices))
           prices[key]=savedPrices[key]===undefined?initial:parseMoney(savedPrices[key],initial);
         // New fixed-cost wires and logic blocks override prices in older saves.
-        for(const type of ['Wire','Splitter','Sorter','ValueGate']){
-          if(prices[type]!==10n){prices[type]=10n;markDirty();}
+        for(const type of fixedPriceMachines){
+          if(prices[type]!==initialPrices[type]){prices[type]=initialPrices[type];markDirty();}
         }
         // Older saves used a free first Advanced Dropper. Upgrade their next
         // purchase price while preserving the cost paid for already-owned items.
-        if(data.pricingVersion!==2){
+        if((data.pricingVersion??1)<2){
           const oldNextPrice=parseMoney(data.prices?.AdvancedDropper,0n);
           prices.AdvancedDropper=oldNextPrice===0n?200n:
             oldNextPrice*200n>MAX_PRICE?MAX_PRICE:oldNextPrice*200n;
@@ -2001,22 +2009,9 @@
       inventory[location.zone][location.index]=item;
       if(location.zone==='hotbar')inventoryCosts.hotbar[location.index].push(price);
       else inventoryCosts.backpack[location.index]=price;
-      if(item==='Dropper') prices[item]=price===0n?1n:price*2n>MAX_PRICE?MAX_PRICE:price*2n;
-      if(item==='Conveyor') prices[item]=price===0n?50n:price>=250n?250n:price+50n;
-      if(item==='Purifier') prices[item]=price+25n>MAX_PRICE?MAX_PRICE:price+25n;
-      if(item==='Furnace') prices[item]=price*3n/2n>MAX_PRICE?MAX_PRICE:((price*3n+10n)/20n)*10n;
-      if(item==='CryoChamber') prices[item]=price+50n>MAX_PRICE?MAX_PRICE:price+50n;
-      if(item==='LaserCutter') prices[item]=price+180n>MAX_PRICE?MAX_PRICE:price+180n;
-      if(item==='AdvancedDropper') prices[item]=price*2n>MAX_PRICE?MAX_PRICE:price*2n;
-      if(item==='SuperDropper') prices[item]=price*3n>MAX_PRICE?MAX_PRICE:price*3n;
-      if(item==='HydraulicPump') prices[item]=price>=MAX_PRICE?MAX_PRICE:price>MAX_PRICE/2n?MAX_PRICE:price*2n;
-      if(item==='Presser') prices[item]=price>=750n?750n:price+50n>750n?750n:price+50n;
-      if(item==='Extractor') prices[item]=price===0n?50n:price*3n>MAX_PRICE?MAX_PRICE:price*3n;
-      if(item==='Turbine') {
-        // 1.25x, rounded upward to the next multiple of five.
-        const grown=(price*5n+3n)/4n;
-        prices[item]=grown>MAX_PRICE?MAX_PRICE:((grown+4n)/5n)*5n;
-      }
+      // Prices rise by 10% after each purchase, with no ceiling apart
+      // from the regular conveyor ($2.5K). Fixed wires and logic never rise.
+      prices[item]=nextMachinePrice(item,price);
       markDirty();return true;
     }
     function purchase(item){
