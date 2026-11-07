@@ -212,6 +212,45 @@
     body.delete-active .grid-cell.occupied:hover { background: #ffdede; box-shadow: inset 0 0 0 2px #d84141; }
     .toast { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--hot-slot) + 44px); left: 50%; transform: translate(-50%, 8px); z-index: 80; opacity: 0; pointer-events: none; background: #fff8d6; border: var(--stroke); border-radius: 12px 9px 13px 10px; box-shadow: 3px 4px 0 var(--ink); padding: 10px 20px; font-size: 15px; font-weight: 800; white-space: nowrap; transition: opacity .18s, transform .18s; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .brand-group{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+    .icon-control{display:grid;place-items:center;width:32px;height:32px;border:2px solid var(--ink);background:#e8f6ff;border-radius:10px;font:900 23px/1 sans-serif;cursor:pointer}
+    .shop-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px clamp(20px,3.5vw,48px) 2px}
+    .shop-field{display:grid;gap:4px;font:800 12px/1.2 sans-serif;color:#484444}
+    .shop-field input,.shop-field select{background:white;border:2px solid #555;border-radius:9px;padding:8px;font:700 14px sans-serif;max-width:100%;min-height:38px}
+    .shop-search{flex:1 1 150px;min-width:120px}
+    .shop-search input{width:100%}
+    .shop-results{font:700 12px sans-serif;color:#686868;align-self:center;white-space:nowrap}
+    .item{position:relative}
+    .item .item-info{position:absolute;right:10px;top:10px;width:33px;height:33px;border:2px solid #46769b;border-radius:50%;background:#e5f5ff;color:#235c85;cursor:pointer;font:900 18px sans-serif;z-index:3}
+    .item .item-info:focus-visible{outline:3px solid #1b7eb8}
+    .factory-actions{position:fixed;z-index:8;right:12px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + var(--hot-slot) + 39px);display:flex;gap:4px;align-items:center;padding:5px;background:#fffdf4dd;border:2px solid #292929;border-radius:12px;box-shadow:2px 3px 0 #292929;max-width:calc(100vw - 16px)}
+    .factory-actions button{min-width:30px;height:33px;border:1.5px solid #292929;border-radius:7px;background:#fff;font:900 19px/1 sans-serif;cursor:pointer}
+    .factory-actions button:disabled{opacity:.35;cursor:default}
+    .factory-actions button[aria-pressed="true"]{background:#ffe19e}
+    .factory-actions #zoomLevel{font:800 11px sans-serif;min-width:32px;text-align:center}
+    .stats-config{width:min(680px,96vw);max-height:88dvh;overflow:auto}
+    .dialog-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .small-close{border:2px solid #9d4848;border-radius:9px;background:#fff0f0;min-width:36px;height:36px;font:800 25px sans-serif;cursor:pointer}
+    .stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+    .stats-grid>div{display:flex;flex-direction:column;gap:6px;background:#fff;border:1.5px solid #b6b6b6;border-radius:9px;padding:12px;min-width:0}
+    .stats-grid small{color:#686868;font:700 12px sans-serif}
+    .stats-grid strong{font:900 clamp(14px,2.3vw,22px)/1.2 sans-serif;overflow-wrap:anywhere}
+    .stats-option{display:flex!important;flex-direction:row;align-items:center;gap:8px}
+    .stats-option input{width:20px;height:20px;flex:none}
+    .stats-note{font:700 12px/1.4 sans-serif;color:#555;margin:0}
+    .shop-info-art{display:flex;align-items:center;justify-content:center;background:#eff5ff;border:1.5px solid #aaa;border-radius:10px;height:110px}
+    .shop-info-art svg{width:90px;height:80px}
+    .shop-info-text{font:750 14px/1.55 sans-serif;white-space:pre-line}
+    .dialog-primary{border:2px solid #292929;background:#ffe28b;border-radius:9px;padding:10px;font-weight:850;cursor:pointer}
+    .grid-cell.preview-valid::before,.grid-cell.preview-blocked::before{content:'';position:absolute;inset:1px;z-index:7;pointer-events:none;border:2px solid #25ab66;background:#29cf6040;border-radius:4px}
+    .grid-cell.preview-blocked::before{border-color:#d33d45;background:#ed3b3b55}
+    .grid-cell.bottleneck-warn{box-shadow:inset 0 0 0 3px #e9a323!important}
+    .grid-cell.bottleneck-severe{box-shadow:inset 0 0 0 3px #e03434!important;background:#ffe2d8}
+    .blob{transition:left .22s linear,top .22s linear;will-change:left,top}
+    body.simulation-paused .machine-icon *,body.simulation-paused .blob *{animation-play-state:paused!important}
+    body.pan-mode .grid-cell{cursor:grab;touch-action:none!important}
+    body.pan-mode .factory-grid{touch-action:none!important}
+    @media(max-width:580px){.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.factory-actions{right:5px;gap:2px;padding:3px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + var(--hot-slot) + 25px)}.factory-actions button{min-width:27px;height:29px;font-size:16px}.shop-controls{padding:9px 18px 2px}}
     @media (max-width: 850px) {
       .items { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
@@ -254,7 +293,9 @@
 
   <main class="world" id="world">
     <header class="topbar">
-      <h1 class="brand">🏭Tiny Factory</h1>
+      <div class="brand-group"><h1 class="brand">🏭Tiny Factory</h1>
+        <button type="button" class="icon-control" id="statsToggle" aria-label="Open factory information and statistics" title="Factory statistics">ⓘ</button>
+      </div>
       <div class="balance" id="balance" aria-label="Money: $0; no net change"><span id="balanceAmount">$0</span><span class="money-trend" id="moneyTrend" data-direction="flat" aria-hidden="true" title="No net change over the last 10 seconds">—</span></div>
       <button type="button" class="shop-toggle" id="shopToggle" aria-label="Open shop" aria-haspopup="dialog" aria-controls="shopPanel" aria-expanded="false" title="Shop">
         <svg viewBox="0 0 64 64" fill="none" stroke="#292929" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11h7l7 31h29l6-23H18"/><path d="M23 29h30M31 20l2 21m11-21-2 21M21 46h30"/><path d="M29 54a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM46 54a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>
@@ -278,6 +319,19 @@
       <div class="panel-head">
         <div><h2 class="panel-heading">Shop</h2><div class="panel-subtitle" id="shopMoney">$0</div></div>
         <button type="button" id="closeShop" class="close" aria-label="Close shop">×</button>
+      </div>
+      <div class="shop-controls">
+        <label class="shop-field shop-search">Find machine <input type="search" id="shopSearch" placeholder="Search machines…" autocomplete="off"></label>
+        <label class="shop-field">Buy amount <select id="bulkAmount" aria-label="Purchase quantity">
+          <option value="1">×1</option><option value="5">×5</option><option value="10">×10</option>
+          <option value="25">×25</option><option value="max">Max</option>
+        </select></label>
+        <label class="shop-field">Filter <select id="shopFilter" aria-label="Filter shop items">
+          <option value="all">All items</option><option value="affordable">Affordable</option>
+          <option value="owned">Owned</option><option value="unowned">Not owned</option>
+          <option value="logic">Logic blocks</option><option value="free">Free</option>
+        </select></label>
+        <span id="shopResults" class="shop-results" aria-live="polite">18 machines</span>
       </div>
       <div class="shop-tabs" id="shopTabs" role="tablist" aria-label="Shop categories">
         <button class="shop-tab" type="button" data-tab="All" role="tab" aria-selected="true">All</button>
@@ -340,7 +394,54 @@
       <div class="bag-grid" id="bagGrid" aria-label="36 backpack slots"></div>
     </section>
   </div>
+  <div class="factory-actions" aria-label="Factory controls">
+    <button type="button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo building action" disabled>↶</button>
+    <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo building action" disabled>↷</button>
+    <button type="button" id="pauseBtn" title="Pause factory (P)" aria-label="Pause simulation" aria-pressed="false">⏸</button>
+    <button type="button" id="panBtn" title="Pan mode" aria-label="Toggle pan mode" aria-pressed="false">✥</button>
+    <button type="button" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+    <span id="zoomLevel" aria-live="polite">100%</span>
+    <button type="button" id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+    <button type="button" id="zoomReset" title="Reset view" aria-label="Reset zoom and pan">⌂</button>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="sorter-panel" id="statsPanel" role="dialog" aria-modal="true" aria-label="Factory information and lifetime statistics">
+    <section class="sorter-config stats-config">
+      <div class="dialog-title"><h2>📊 Factory information</h2><button type="button" class="small-close" id="closeStats" aria-label="Close factory information">×</button></div>
+      <div class="stats-grid">
+        <div><small>Income / second</small><strong id="statIncome">$0</strong></div>
+        <div><small>Expenses / second</small><strong id="statExpenses">$0</strong></div>
+        <div><small>Net / second</small><strong id="statNet">$0</strong></div>
+        <div><small>Generators & power</small><strong id="statPower">0 / 0</strong></div>
+        <div><small>Blobs in factory</small><strong id="statLiveBlobs">0</strong></div>
+        <div><small>Active machines</small><strong id="statMachines">0</strong></div>
+        <div><small>Lifetime earned</small><strong id="statEarned">$0</strong></div>
+        <div><small>Lifetime spent</small><strong id="statSpent">$0</strong></div>
+        <div><small>Blobs sold / produced</small><strong id="statBlobs">0 / 0</strong></div>
+        <div><small>Blobs processed</small><strong id="statProcessed">0</strong></div>
+        <div><small>Highest blob sold</small><strong id="statBestBlob">$0</strong></div>
+        <div><small>Playtime / purchases</small><strong id="statPlaytime">0m / 0</strong></div>
+      </div>
+      <label class="stats-option"><input type="checkbox" id="bottleneckToggle"> Highlight bottlenecks (blocked for 2+ seconds)</label>
+      <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
+    </section>
+  </div>
+  <div class="sorter-panel" id="shopInfoPanel" role="dialog" aria-modal="true" aria-label="Machine information">
+    <section class="sorter-config">
+      <div class="dialog-title"><h2 id="shopInfoName">Machine info</h2><button class="small-close" type="button" id="closeShopInfo" aria-label="Close machine info">×</button></div>
+      <div id="shopInfoArt" class="shop-info-art"></div>
+      <div id="shopInfoText" class="shop-info-text"></div>
+      <button type="button" id="shopInfoDone" class="dialog-primary">Got it</button>
+    </section>
+  </div>
+  <div class="sorter-panel" id="resetPanel" role="dialog" aria-modal="true" aria-label="Confirm factory reset">
+    <section class="sorter-config">
+      <h2>⚠️ Delete your factory?</h2>
+      <p>This permanently deletes your money, machines, inventory and lifetime statistics on this device. This cannot be undone.</p>
+      <label>Type RESET to confirm <input id="resetConfirmText" type="text" autocomplete="off" placeholder="RESET"></label>
+      <div class="sorter-actions"><button type="button" id="cancelReset">Keep factory</button><button type="button" id="confirmReset" disabled>Delete everything</button></div>
+    </section>
+  </div>
   <div class="sorter-panel" id="sorterPanel" role="dialog" aria-modal="true" aria-label="Configure Sorter">
     <div class="sorter-config">
       <h2>🧭 Sorter settings</h2>
