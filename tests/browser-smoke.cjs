@@ -4,10 +4,12 @@
 //      node tests/browser-smoke.cjs
 const { chromium,webkit }=require('playwright');
 const { createServer }=require('node:http');
-const { readFileSync }=require('node:fs');
+const { readFileSync,mkdirSync }=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..');
+const screenshotDir=path.join(root,'test-results','screenshots');
+mkdirSync(screenshotDir,{recursive:true});
 const types={'/':'index.html','/index.html':'index.html',
   '/sw.js':'sw.js','/manifest.webmanifest':'manifest.webmanifest',
   '/icon.svg':'icon.svg'};
@@ -60,6 +62,7 @@ async function run(){
         'Unexpected horizontal overflow ('+width+' > '+profile.width+')');
       await page.locator('#statsToggle').click();
       assert(await page.locator('#statsPanel').evaluate(el=>el.classList.contains('open')));
+      await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();
       await page.locator('#shopToggle').click();
       await page.locator('#shopSearch').fill('Mighty');
@@ -70,6 +73,7 @@ async function run(){
       assert(await page.locator('#buyCounterGate').isVisible());
       assert(await page.locator('#buyOverflowDrain').isVisible());
       assert(await page.locator('#buyTimerGate').isVisible());
+      await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
       await page.locator('#buyMightyDropper .item-info').click();
       assert(await page.locator('#shopInfoPanel').evaluate(el=>el.classList.contains('open')));
@@ -95,6 +99,7 @@ async function run(){
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
       }
       await page.waitForTimeout(200);
+      await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-factory.png')});
       assert.deepEqual(errors,[],'No uncaught game script exceptions allowed');
       console.log('PASS '+profile.name);
       successes++;
