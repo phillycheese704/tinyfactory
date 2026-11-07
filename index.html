@@ -1786,7 +1786,7 @@
       // Look for machines that naturally feed into this conveyor.
       for(let dir=0;dir<4;dir++) {
         const near = neighbor(key, dir), prior = near && placed.get(near);
-        if (prior?.type === 'Conveyor' && prior.direction === (dir+2)%4) return dir;
+        if (allConveyors.has(prior?.type) && prior.direction === (dir+2)%4) return dir;
         if (allDroppers.has(prior?.type) && prior.direction === (dir+2)%4) return dir;
         if (processorTypes.has(prior?.type) && processorExit(near,prior)===key) return dir;
         if(prior?.type==='LaserPart' && prior.segment==='out')return dir;
@@ -2345,30 +2345,30 @@
 
     // Shop info buttons explain every machine without adding a grid inspector.
     const shopHelp={
-      Dropper:['1 tile','Manual click: 0.5s; generates basic blobs. Powered: automatic production.','First free, then doubles.'],
-      AdvancedDropper:['1 tile','Creates mostly bronze blobs with a chance of silver. Can click or power.','Price doubles.'],
-      SuperDropper:['1 tile','Produces bronze, silver, gold and diamond blobs. Power improves odds and speed.','Price triples.'],
-      Conveyor:['1 tile','Moves blobs every 0.25s; automatically curves toward input sources.','Starts free, rises by $50 to $250.'],
-      Extractor:['1 tile','Collects and sells arriving blobs for their current value.','Starts free, then triples from $50.'],
-      Splitter:['Logic on conveyor','Routes blobs among two exits with random branching.','Always $10.'],
-      Sorter:['Logic on conveyor','Routes selected blob grade in a chosen direction; other grades continue forward.','Always $10.'],
-      ValueGate:['Logic on conveyor','Sends blobs above a custom value to an alternate direction.','Always $10.'],
-      Wire:['1 tile','Carries electricity between generators and powered machines.','Always $10.'],
-      Turbine:['1 tile','Generates one power charge every 2.5 seconds, with $5 upkeep per 10 seconds.','Price grows about 1.25×.'],
-      HydraulicPump:['2 × 3 tiles','Generates 15 power every 3 seconds across connected wires; $50 per burst.','Price doubles, capped at 999Qa.'],
-      Purifier:['1 tile','Improves passing blobs and adds a shiny effect.','Adds $25 per purchase.'],
-      Furnace:['1 tile','Melts bronze and improves blob value.','Price grows around 1.5×.'],
-      CryoChamber:['1 tile','Freezes and improves blobs; powered operation increases its multiplier.','Adds $50 per purchase.'],
-      LaserCutter:['3 tiles','Applies a laser upgrade to passing blobs, increasing their worth.','Adds $180 per purchase.'],
-      Upgrader:['1 tile','Upgrades each passing blob to the next quality tier.','Starts at $500.'],
-      Presser:['1 tile','Presses blobs into plates; melted materials receive a larger value boost.','Adds $50, capped at $750.'],
-      ParticleAccelerator:['3 × 3 tiles','Uses power to transform batches of five blobs into far more valuable outputs.','Starts at $1B.']
+      Dropper:['1 tile','Manual click: 0.5s; generates basic blobs. Powered: automatic production.','+10% per purchase, no cap.'],
+      AdvancedDropper:['1 tile','Creates mostly bronze blobs with a chance of silver. Can click or power.','+10% per purchase, no cap.'],
+      SuperDropper:['1 tile','Produces bronze, silver, gold and diamond blobs. Power improves odds and speed.','+10% per purchase, no cap.'],
+      Conveyor:['1 tile','Moves blobs every 0.25s; automatically curves toward input sources.','+10% per purchase, no cap.'],
+      Extractor:['1 tile','Collects and sells arriving blobs for their current value.','+10% per purchase, no cap.'],
+      Splitter:['Logic on conveyor','Routes blobs among two exits with random branching.','Fixed $10.'],
+      Sorter:['Logic on conveyor','Routes selected blob grade in a chosen direction; other grades continue forward.','Fixed $10.'],
+      ValueGate:['Logic on conveyor','Sends blobs above a custom value to an alternate direction.','Fixed $10.'],
+      Wire:['1 tile','Carries electricity between generators and powered machines.','Fixed $10.'],
+      Turbine:['1 tile','Generates one power charge every 2.5 seconds, with $5 upkeep per 10 seconds.','+10% per purchase, no cap.'],
+      HydraulicPump:['2 × 3 tiles','Generates 15 power every 3 seconds across connected wires; $50 per burst.','+10% per purchase, no cap.'],
+      Purifier:['1 tile','Improves passing blobs and adds a shiny effect.','+10% per purchase, no cap.'],
+      Furnace:['1 tile','Melts bronze and improves blob value.','+10% per purchase, no cap.'],
+      CryoChamber:['1 tile','Freezes and improves blobs; powered operation increases its multiplier.','+10% per purchase, no cap.'],
+      LaserCutter:['3 tiles','Applies a laser upgrade to passing blobs, increasing their worth.','+10% per purchase, no cap.'],
+      Upgrader:['1 tile','Upgrades each passing blob to the next quality tier.','+10% per purchase, no cap.'],
+      Presser:['1 tile','Presses blobs into plates; melted materials receive a larger value boost.','+10% per purchase, no cap.'],
+      ParticleAccelerator:['3 × 3 tiles','Uses power to transform batches of five blobs into far more valuable outputs.','+10% per purchase, no cap.']
     };
     const moreShopHelp={
       FusionChamber:['2×2','Combines two incoming blobs into one, preserving their summed value.','+10% per purchase'],
       Quantumifyier:['5×5','Multiplies passing blobs ×5 with a 5% chance to clone.','+10% per purchase'],
       Cloner:['1×3','Creates a copy; the clone keeps 50% value, or 95% with power.','+10% per purchase'],
-      Infinifyer:['4×4','Produces five copies, each worth 25× the input value.','+10% per purchase'],
+      Infinifyer:['4×4','Creates five additional clones, each worth 25× the input value.','+10% per purchase'],
       Cleaner:['1×1','Boosts adjacent processor multipliers and adders 1.15×.','+10% per purchase'],
       QuantumComputer:['1×1','Multiplies ×50, duplicates the blob and strengthens all subsequent processors ×5.','+10% per purchase'],
       MightyDropper:['1×1','Drops existing gold blobs every 2 seconds; its blobs receive 2× processing effectiveness. Powered speed doubles.','+10% per purchase'],
@@ -2716,7 +2716,7 @@
       blob.worth=(blob.worth*scaled+50n)/100n;
     }
     function addBlobValue(blob,amount){
-      blob.worth+=(BigInt(amount)*processingStrength(blob)+99n)/100n;
+      blob.worth+=(BigInt(amount)*processingStrength(blob)+50n)/100n;
     }
     function queueClone(machine,blob,worth=blob.worth,count=1){
       machine.pending=machine.pending||[];
@@ -2753,8 +2753,8 @@
         const ports=megaPorts(root,mega);
         if(!ports)return null;
         if(blob.key===ports.entry&&ports.exit!==ports.entry)return ports.exit;
-        if(blob.key===ports.exit&&ports.after&&isBeltTile(ports.after))
-          return ports.after;
+        if(blob.key===ports.exit&&ports.after&&isBeltTile(ports.after)&&
+          beltCanContinue(ports.after,ports.exit))return ports.after;
         return null;
       }
       if(processorTypes.has(obj.type))
@@ -2855,7 +2855,7 @@
           for(const [id,other] of [...blobs]){
             if(id===blob.id||other.state==='collecting')continue;
             const [rr,cc]=coords(other.key);
-            if(Math.abs(rr-r)<3&&Math.abs(cc-c)<3){
+            if(rr>=r-3&&rr<r+3&&cc>=c-3&&cc<c+3){
               other.worth*=100n;other.state='collecting';other.collectAt=now+300;
             }
           }
@@ -3049,11 +3049,47 @@
       }
       return delivered;
     }
+    function deliverTurbinePower(root,now){
+      const source=placed.get(root);
+      if(source?.type!=='Turbine')return 0;
+      let start=null;
+      for(const dir of [source.direction,0,1,2,3]){
+        const near=neighbor(root,dir);
+        if(near&&['Wire','WireLift'].includes(placed.get(near)?.type)){
+          start=near;break;
+        }
+      }
+      if(!start)return 0;
+      const queue=[start],previous=new Map([[start,null]]);
+      let target=null,lastWire=null;
+      for(let i=0;i<queue.length&&!target;i++){
+        const key=queue[i];
+        for(let dir=0;dir<4;dir++){
+          const near=neighbor(key,dir),obj=near&&placed.get(near);
+          if(['Wire','WireLift'].includes(obj?.type)&&!previous.has(near)){
+            previous.set(near,key);queue.push(near);
+          }else if(canReceivePower.has(placed.get(rootKey(near))?.type)){
+            target=placed.get(rootKey(near));lastWire=key;break;
+          }
+        }
+      }
+      if(!target)return 0;
+      target.charges=(target.charges||[]).filter(t=>t>now);
+      if(target.charges.length>=100)return 0;
+      target.charges.push(now+3000);
+      target.poweredUntil=now+3000;target.pulseUntil=now+260;
+      for(let at=lastWire;at!==null;at=previous.get(at)){
+        const wire=placed.get(at);
+        if(wire)wire.wireUntil=now+3000;
+      }
+      return 1;
+    }
     function deliverPower(sourceKey,now,amount=1){
       rebuildWireLayouts();
       const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
       if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
-      if(['HydraulicPump','Turbine','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source.type))
+      if(source.type==='Turbine')return deliverTurbinePower(sourceRoot,now);
+      if(['HydraulicPump','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source.type))
         return deliverHydraulicPower(sourceRoot,now,amount);
       const queue=[],visited=new Set(),targets=new Map();
       // Large generators expose power sockets from every outer tile.
