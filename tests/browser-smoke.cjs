@@ -185,9 +185,20 @@ async function run(){
         'Drag must pan by the finger delta');
       assert(camera.pinchZoomed,'Pinch must zoom');
       assert(camera.hudFixed,'Zoom and pan must not move shop, inventory or status UI');
+      await page.evaluate(()=>{
+        window.__cameraTestKey=null;
+        document.addEventListener('keydown',event=>{
+          window.__cameraTestKey={key:event.key,target:event.target?.id||event.target?.tagName};
+        },{capture:true,once:true});
+      });
       await page.keyboard.press('0');
-      assert.match(await page.locator('#factoryGrid').getAttribute('style'),
-        /translate\(0px, 0px\) scale\(1\)/,'0 must reset the camera');
+      const keyboard=await page.evaluate(()=>({
+        style:document.querySelector('#factoryGrid').getAttribute('style'),
+        active:document.activeElement?.id||document.activeElement?.tagName,
+        received:window.__cameraTestKey
+      }));
+      assert.match(keyboard.style,/translate\(0px, 0px\) scale\(1\)/,
+        '0 must reset the camera: '+JSON.stringify(keyboard));
       if(profile.gamepad){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
