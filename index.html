@@ -589,7 +589,8 @@
       $('statIncome').textContent='+'+formatMoneyPerSecond(plus);
       $('statExpenses').textContent='−'+formatMoneyPerSecond(minus);
       $('statNet').textContent=(plus>=minus?'+':'−')+formatMoneyPerSecond(plus>=minus?plus-minus:minus-plus);
-      const generators=[...placed.values()].filter(obj=>(obj.type==='Turbine'||obj.type==='HydraulicPump')&&obj.enabled).length;
+      const generators=[...placed.values()].filter(obj=>
+        ['Turbine','HydraulicPump','FusionReactor','SolarField','DysonSphere'].includes(obj.type)&&obj.enabled).length;
       $('statPower').textContent=generators+' on / '+stats.powerGenerated+' total';
       $('statLiveBlobs').textContent=String(blobs.size);
       $('statMachines').textContent=String([...placed.values()].filter(obj=>!['LaserPart','AcceleratorPart','HydraulicPart','MegaPart'].includes(obj.type)).length);
@@ -1844,7 +1845,9 @@
       const connected=[];
       for(let dir=0;dir<4;dir++){
         const near=neighbor(key,dir),type=near&&placed.get(near)?.type;
-        if(type==='Wire'||canGeneratePower.has(type)||canReceivePower.has(type))
+        if(['Wire','WireLift'].includes(type)||canGeneratePower.has(type)||
+           canGeneratePower.has(placed.get(rootKey(near))?.type)||
+           canReceivePower.has(type)||canReceivePower.has(placed.get(rootKey(near))?.type))
           connected.push(dir);
       }
       return connected;
@@ -2031,7 +2034,7 @@
           obj.pulseUntil=now+200;
           renderGrid();
         }
-      }else if(['Turbine','HydraulicPump'].includes(obj?.type)){
+      }else if(['Turbine','HydraulicPump','FusionReactor','SolarField','DysonSphere'].includes(obj?.type)){
         runBuildAction('Toggle generator',()=>{
           obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
           markDirty();renderGrid();
@@ -2612,7 +2615,7 @@
       const type=machine.type;
       if(type==='CounterGate'){machine.counter=(machine.counter||0)+1;markDirty();}
       if(type==='Recycler'){
-        const power={normal:1,bronze:1,silver:4,gold:20,
+        const power={normal:1,bronze:1,silver:1,gold:4,
           diamond:20,rainbow:100,quantum:250}[blob.grade]??1;
         const amount=power*(hasSupercharger()?5:1);
         deliverPower(root,now,amount);
@@ -2666,7 +2669,7 @@
         queueClone(machine,blob,powerLevel(machine,now)>0?blob.worth*95n/100n:blob.worth/2n);
       }else if(type==='Infinifyer'){
         multiplyBlob(blob,2500);
-        queueClone(machine,blob,blob.worth,4);
+        queueClone(machine,blob,blob.worth,5);
       }else if(type==='QuantumComputer'){
         multiplyBlob(blob,5000);
         blob.quantumEnhanced=true;
@@ -2766,24 +2769,28 @@
     // energizing a wire does not consume one of those units.
     function deliverHydraulicPower(sourceRoot,now,amount){
       const source=placed.get(sourceRoot);
-      if(!['HydraulicPump','Turbine'].includes(source?.type))return 0;
+      if(!['HydraulicPump','Turbine','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source?.type))return 0;
       const queue=[],visited=new Set(),receivers=new Map();
+      let initialWires=0;
       for(const from of machineKeys(sourceRoot,source)){
         if(!from)continue;
         for(let dir=0;dir<4;dir++){
           const next=neighbor(from,dir);
-          if(next&&placed.get(next)?.type==='Wire')queue.push(next);
+          if(next&&['Wire','WireLift'].includes(placed.get(next)?.type)){
+            if(source.type==='SolarField'&&initialWires>=2)continue;
+            queue.push(next);initialWires++;
+          }
         }
       }
       for(let index=0;index<queue.length;index++){
         const key=queue[index];
-        if(visited.has(key)||placed.get(key)?.type!=='Wire')continue;
+        if(visited.has(key)||!['Wire','WireLift'].includes(placed.get(key)?.type))continue;
         visited.add(key);
         const wire=placed.get(key);
         wire.wireUntil=now+3000;
         for(let dir=0;dir<4;dir++){
           const next=neighbor(key,dir),obj=next&&placed.get(next);
-          if(obj?.type==='Wire'){
+          if(['Wire','WireLift'].includes(obj?.type)){
             if(!visited.has(next))queue.push(next);
           }else if(canReceivePower.has(obj?.type)){
             const root=rootKey(next);
@@ -2795,7 +2802,13 @@
       for(const consumer of consumers)
         consumer.charges=(consumer.charges||[]).filter(exp=>exp>now);
       let delivered=0;
-      for(let i=0;i<amount;i++){
+      if(source.type==='DysonSphere'){
+        for(const obj of consumers){
+          obj.charges=Array(100).fill(now+3100);
+          obj.poweredUntil=now+3100;obj.pulseUntil=now+260;
+          delivered+=100;
+        }
+      }else for(let i=0;i<amount;i++){
         consumers.sort((a,b)=>a.charges.length-b.charges.length);
         const consumer=consumers.find(obj=>obj.charges.length<100);
         if(!consumer)break;
@@ -2810,7 +2823,7 @@
       rebuildWireLayouts();
       const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
       if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
-      if(source.type==='HydraulicPump'||source.type==='Turbine')
+      if(['HydraulicPump','Turbine','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source.type))
         return deliverHydraulicPower(sourceRoot,now,amount);
       const queue=[],visited=new Set(),targets=new Map();
       // Large generators expose power sockets from every outer tile.
@@ -2874,13 +2887,28 @@
       // Clear output tiles before attempting new drops at the maximum rate.
       if(now-lastMovementAt>=25){lastMovementAt=now;moveBlobs(now);}
       for(const [key,obj] of placed){
+        if(['FusionReactor','SolarField','DysonSphere'].includes(obj.type)&&obj.enabled){
+          const period=obj.type==='FusionReactor'?4000:obj.type==='SolarField'?10000:3000;
+          if(now-obj.lastPower>=period){
+            obj.lastPower=now;
+            let units=obj.type==='FusionReactor'?100:obj.type==='SolarField'?
+              1+Math.floor(Math.random()*15):100;
+            if(hasSupercharger())units*=5;
+            deliverPower(key,now,units);
+            stats.powerGenerated+=units;
+            if(obj.type==='FusionReactor'){
+              money-=20000n;stats.spent+=20000n;updateMoney();
+            }
+            obj.pulseUntil=now+350;markDirty();mustRender=true;
+          }
+        }
         if(obj.type==='HydraulicPump'&&obj.enabled){
           if(now-obj.lastPower>=3000){
             obj.lastPower+=Math.floor((now-obj.lastPower)/3000)*3000;
             obj.pulseUntil=now+350;
-            deliverPower(key,now,15);
+            deliverPower(key,now,15*(hasSupercharger()?5:1));
             // Each 15-power generation burst has a $50 running cost.
-            money-=50n;stats.spent+=50n;stats.powerGenerated+=15;
+            money-=50n;stats.spent+=50n;stats.powerGenerated+=15*(hasSupercharger()?5:1);
             updateMoney();
             markDirty();
             mustRender=true;
@@ -2890,7 +2918,7 @@
           if(now-obj.lastPower>=2500){
             obj.lastPower+=Math.floor((now-obj.lastPower)/2500)*2500;
             obj.pulseUntil=now+260;
-            deliverPower(key,now);stats.powerGenerated++;mustRender=true;
+            deliverPower(key,now,hasSupercharger()?5:1);stats.powerGenerated+=hasSupercharger()?5:1;mustRender=true;
           }
           if(now-obj.lastUpkeep>=10000){
             const cycles=Math.floor((now-obj.lastUpkeep)/10000);
