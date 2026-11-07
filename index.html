@@ -1229,6 +1229,11 @@
       if(!wireLayoutsDirty)return;
       wireLayoutsDirty=false;
       wirePorts.clear();
+      // Fully automatic wires need no expensive path search. Power travels
+      // through every touching wire; only legacy manually drawn wire shapes
+      // need the old blue-input/red-output route for their artwork.
+      if(![...placed.values()].some(obj=>obj.type==='Wire'&&obj.manuallyRotated))
+        return;
       const unused=new Set([...placed].filter(([,m])=>m.type==='Wire').map(([key])=>key));
       const edgeDirection=(from,to)=>{
         const [r,c]=coords(from),[rr,cc]=coords(to);
