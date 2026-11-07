@@ -271,6 +271,181 @@
     body.pan-mode .grid-cell{cursor:grab;touch-action:none!important}
     body.pan-mode .factory-grid{touch-action:none!important}
     @media(max-width:580px){.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.factory-actions{right:5px;gap:2px;padding:3px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + var(--hot-slot) + 25px)}.factory-actions button{min-width:27px;height:29px;font-size:16px}.shop-controls{padding:9px 18px 2px}}
+    /* VISUAL OVERHAUL — layered metal, luminous glass, conveyor tracks and 3-D depth.
+       CSS/SVG only: no WebGL memory pressure, requests, fonts or texture downloads. */
+    .world {
+      --factory-metal:#c4d6df; --factory-highlight:#fffefa; --factory-ink:#5b7b91;
+      background-color:#e2ecf0;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 45% 20%,#ffffffb0,transparent 85%),
+        repeating-linear-gradient(0deg,transparent 0 34px,#6586a00b 34px 36px),
+        repeating-linear-gradient(90deg,transparent 0 34px,#6586a00b 34px 36px),
+        linear-gradient(160deg,#eef5f7 0%,#d2e1e7 54%,#bbd2df 100%);
+      isolation:isolate;
+    }
+    body[data-factory-theme="midnight"] .world{
+      --factory-metal:#607793;--factory-highlight:#bddbff;--factory-ink:#4567a7;
+      background-color:#14263d;
+      background-image:
+        radial-gradient(ellipse at 50% 18%,#3b6a9766,transparent 62%),
+        repeating-linear-gradient(0deg,transparent 0 34px,#83adce15 34px 36px),
+        repeating-linear-gradient(90deg,transparent 0 34px,#83adce15 34px 36px),
+        linear-gradient(145deg,#334760,#14263d);
+    }
+    body[data-factory-theme="blueprint"] .world{
+      --factory-metal:#aecff3;--factory-highlight:#fcffff;--factory-ink:#5089ba;
+      background-color:#d2edff;
+      background-image:
+        repeating-linear-gradient(0deg,transparent 0 33px,#2a70b51e 33px 35px),
+        repeating-linear-gradient(90deg,transparent 0 33px,#2a70b51e 33px 35px),
+        linear-gradient(155deg,#effbff,#b2dcfa);
+    }
+    body.has-place-tool .factory-grid,body.dragging-to-grid .factory-grid{
+      background:#ffffff12;border-color:#748f9b;box-shadow:0 0 0 2px #ffffff80,3px 6px 13px #26465a30;
+    }
+    .grid-cell.occupied{
+      background:linear-gradient(145deg,#fffefaef,#e5edf1ef 70%,#a9c3d2d6);
+      box-shadow:inset 1px 1px 0 #fff, inset -2px -2px 0 #8ca9bb, 1px 2px 2px #12283835;
+      border-radius:4px;
+    }
+    .grid-cell.occupied[data-factory-machine="MegaPart"]{
+      background:linear-gradient(135deg,#e1f0fa,#9dbaca);
+      border-radius:1px;
+    }
+    .machine-icon{
+      filter:drop-shadow(0 2px 1px #213c5466);
+      transition:filter .12s ease;
+    }
+    .machine-icon .bevel-hilight{opacity:.62}
+    .machine-icon .machine-etch{opacity:.7}
+    .grid-cell.occupied:hover .machine-icon{filter:drop-shadow(0 2px 2px #2e617c80) brightness(1.035)}
+    .item-art{
+      background:linear-gradient(140deg,#f8fdff,#d2e4f2 75%,#a5bfcd);
+      border:2px solid #a7bdc9;
+      box-shadow:inset 1px 2px #fff, inset -1px -2px #8dabbc,0 2px 5px #445b7822;
+    }
+    .item-art svg{filter:drop-shadow(1px 2px 1px #3c536d5c)}
+    .item{
+      background:linear-gradient(155deg,#ffffff,#f1f7fb);
+      box-shadow:2px 3px 0 #253c4b,0 5px 14px #314a6220;
+    }
+    .item:hover{
+      background:linear-gradient(155deg,#fff,#fff8e8);
+      box-shadow:3px 5px 0 #253c4b,0 8px 20px #314a6232;
+    }
+    .blob-dot{
+      background:radial-gradient(circle at 29% 22%,#ffffffbd,var(--blob-shade,#6c7988) 32%,#161e29 95%);
+      box-shadow:inset 1px 2px 2px #ffffff7f,inset -2px -2px 3px #050c2c88,1px 3px 3px #17283a79;
+      border:1px solid #334453;
+      animation:blob-breathe 1.6s ease-in-out infinite;
+      position:relative;
+    }
+    .blob-dot::after{
+      content:"";position:absolute;left:17%;top:14%;width:35%;height:22%;border-radius:50%;
+      background:#ffffffba;transform:rotate(-25deg);pointer-events:none;
+    }
+    .blob[data-grade="diamond"] .blob-dot{
+      border-radius:15% 50% 20% 48%;
+      transform:rotate(45deg);
+      background:linear-gradient(130deg,#fff 4%,#8be6ff 30%,#427ac9 65%,#c7ffff);
+    }
+    .blob[data-grade="gold"] .blob-dot{
+      background:radial-gradient(circle at 25% 19%,#fffde6,#ffdf63 31%,#cb771e 85%);
+    }
+    .blob[data-grade="bronze"] .blob-dot{
+      background:radial-gradient(circle at 25% 18%,#ffe7c6,#c88c54 34%,#71402b);
+    }
+    .blob[data-grade="silver"] .blob-dot{
+      background:radial-gradient(circle at 25% 18%,#fff,#d2e1f2 35%,#778ea7);
+    }
+    .blob.rainbow .blob-dot{
+      background:conic-gradient(from 35deg,#f479af,#f8df6e,#a3f4b4,#7ec7fa,#a896eb,#f479af)!important;
+      animation:rainbow-turn 2.8s linear infinite;
+    }
+    .blob.quantum .blob-dot{
+      background:radial-gradient(circle at 30% 25%,#fafaff,#aaaaff 30%,#583fa1 70%,#221e64)!important;
+      box-shadow:0 0 9px #9b8dff,inset 0 0 5px #fff;
+      animation:quantum-shimmer 1.35s ease-in-out infinite;
+    }
+    .blob[data-enhanced="true"]::before{
+      content:"";position:absolute;inset:1px;border:1px solid #d8a2ff;border-radius:50%;
+      box-shadow:0 0 8px #bc82fa;animation:quantum-shimmer 1.8s infinite;
+    }
+    .blob[data-infi="true"]::after{
+      content:"∞";position:absolute;top:-14px;right:-9px;font:900 13px sans-serif;
+      color:#9761d7;text-shadow:0 1px #fff;animation:float-particle 1.7s ease-in-out infinite;
+    }
+    .blob.collecting .blob-dot{animation:collect-pop .3s ease-in forwards}
+    .visual-controls{
+      display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;
+      border:1.5px solid #829eae;border-radius:12px;padding:12px;
+      background:linear-gradient(135deg,#f1f8fd,#e2effa);
+    }
+    .visual-controls-head{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+    .visual-controls-head strong{font:900 15px sans-serif}
+    .visual-controls-head small{font:700 11px sans-serif;color:#527086}
+    .visual-controls label{font:800 12px sans-serif;display:grid;gap:5px}
+    .visual-controls select{background:#fff;border:1.5px solid #6288a3;border-radius:8px;padding:8px;min-height:38px;max-width:100%;font:750 12px sans-serif}
+    @media(max-width:600px){.visual-controls{grid-template-columns:1fr}.visual-controls select{font-size:16px}}
+    @keyframes machine-orbit{to{transform:rotate(360deg)}}
+    @keyframes machine-orbit-reverse{to{transform:rotate(-360deg)}}
+    @keyframes glass-wave{0%,100%{opacity:.38}50%{opacity:1}}
+    @keyframes mini-piston{0%,100%{transform:translateY(-3px)}53%{transform:translateY(5px)}}
+    @keyframes portal-swirl{to{transform:rotate(360deg) scale(1.04)}}
+    @keyframes beam-travel{to{stroke-dashoffset:-24}}
+    @keyframes electro-jitter{0%,100%{opacity:.45}35%{opacity:1}60%{opacity:.7}}
+    @keyframes blob-breathe{0%,100%{filter:brightness(1)}50%{filter:brightness(1.12)}}
+    @keyframes rainbow-turn{to{filter:hue-rotate(360deg);transform:rotate(360deg)}}
+    @keyframes quantum-shimmer{0%,100%{opacity:.68;filter:brightness(1)}50%{opacity:1;filter:brightness(1.4)}}
+    @keyframes float-particle{0%,100%{transform:translateY(2px)}50%{transform:translateY(-4px)}}
+    @keyframes collect-pop{to{transform:scale(.25);opacity:.08}}
+    @keyframes flow-speed{to{stroke-dashoffset:-20}}
+    .machine-icon .model-rotor{transform-origin:32px 28px;animation:machine-orbit 2.4s linear infinite}
+    .machine-icon .model-rotor-reverse{transform-origin:32px 28px;animation:machine-orbit-reverse 3.2s linear infinite}
+    .machine-icon .model-piston{animation:mini-piston 1.25s ease-in-out infinite}
+    .machine-icon .model-energy{animation:glass-wave 1.5s ease-in-out infinite}
+    .machine-icon .model-portal{transform-origin:32px 28px;animation:portal-swirl 4s linear infinite}
+    .machine-icon .model-arc{animation:electro-jitter .85s steps(3) infinite}
+    .machine-icon .model-flow{animation:beam-travel .6s linear infinite}
+    .machine-icon .model-particle{animation:float-particle 1.35s ease-in-out infinite}
+    .machine-icon.advancedconveyor .model-flow{animation-duration:.52s}
+    .machine-icon.hyperconveyor .model-flow{animation-duration:.2s}
+    .machine-icon.fusionreactor .model-rotor{animation-duration:.9s}
+    .machine-icon.dysonsphere .model-rotor{animation-duration:4.6s}
+    .machine-icon.singularity .model-portal{animation-duration:1.25s}
+    .machine-icon.quantumifyier .model-rotor{animation-duration:1.1s}
+    .machine-icon.infinifyer .model-portal{animation-duration:.85s}
+    .machine-icon.rainbowdropper .model-energy{animation-duration:.8s}
+    .machine-icon.turbodropper .model-piston{animation-duration:.42s}
+    .machine-icon.infidropper .model-piston{animation-duration:.24s}
+    .machine-icon .model-arc:not(.powered){opacity:.5}
+    body.simulation-paused .machine-icon,body.simulation-paused .machine-icon *,
+    body.simulation-paused .blob,body.simulation-paused .blob *,
+    body.simulation-paused .blob::before,body.simulation-paused .blob::after{
+      animation-play-state:paused!important;
+    }
+    body[data-graphics-quality="balanced"] .machine-icon,
+    body[data-graphics-quality="balanced"] .item-art svg{filter:none}
+    body[data-graphics-quality="balanced"] .blob::before,
+    body[data-graphics-quality="balanced"] .blob::after{display:none}
+    body[data-graphics-quality="minimal"] .machine-icon,
+    body[data-graphics-quality="minimal"] .item-art svg{filter:none!important}
+    body[data-graphics-quality="minimal"] .grid-cell.occupied{
+      background:#fff9ef;box-shadow:inset 0 0 0 1px #c0c7c6;
+    }
+    body[data-graphics-quality="minimal"] .machine-icon *,
+    body[data-graphics-quality="minimal"] .blob *,
+    body[data-graphics-quality="minimal"] .blob::before,
+    body[data-graphics-quality="minimal"] .blob::after{
+      animation:none!important;transition:none!important;
+    }
+    body[data-graphics-quality="minimal"] .blob::before,
+    body[data-graphics-quality="minimal"] .blob::after{display:none}
+    body[data-graphics-motion="reduced"] *,body[data-graphics-motion="reduced"] *::before,
+    body[data-graphics-motion="reduced"] *::after{
+      animation-duration:.01ms!important;animation-iteration-count:1!important;
+      transition-duration:.01ms!important;
+    }
     @media (max-width: 850px) {
       .items { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
@@ -458,6 +633,31 @@
         <div><small>Blobs processed</small><strong id="statProcessed">0</strong></div>
         <div><small>Highest blob sold</small><strong id="statBestBlob">$0</strong></div>
         <div><small>Playtime / purchases</small><strong id="statPlaytime">0m / 0</strong></div>
+      </div>
+      <div class="visual-controls" aria-label="Factory graphics settings">
+        <div class="visual-controls-head"><strong>✦ Models, textures & animation</strong><small>Change any time · saved with your factory</small></div>
+        <label>Graphics detail
+          <select id="graphicsQuality" aria-label="Graphics detail">
+            <option value="auto">Auto (recommended)</option>
+            <option value="ultra">Ultra — full lighting & motion</option>
+            <option value="balanced">Balanced — lighter effects</option>
+            <option value="minimal">Minimal — maximum performance</option>
+          </select>
+        </label>
+        <label>Factory floor
+          <select id="graphicsTheme" aria-label="Factory floor texture">
+            <option value="steel">Steelworks</option>
+            <option value="midnight">Midnight reactor</option>
+            <option value="blueprint">Blueprint lab</option>
+          </select>
+        </label>
+        <label>Animation
+          <select id="graphicsMotion" aria-label="Animation preference">
+            <option value="system">Follow system setting</option>
+            <option value="full">Full motion</option>
+            <option value="reduced">Reduced motion</option>
+          </select>
+        </label>
       </div>
       <label class="stats-option"><input type="checkbox" id="bottleneckToggle"> Highlight bottlenecks (blocked for 2+ seconds)</label>
       <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
@@ -690,6 +890,39 @@
     setInterval(()=>{renderStats();if(bottleneckVisible)renderGrid();},1000);
     const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n,ValueGate:10n,FusionChamber:40000n,Quantumifyier:2500000n,Cloner:5000000n,Infinifyer:1000000000000000n,Cleaner:2000n,QuantumComputer:100000000000000000000n,MightyDropper:2000000n,RainbowDropper:50000000n,TurboDropper:15000000n,QuantumDropper:1000000000000000n,InfiDropper:1000000000000000000n,FusionReactor:10000000000000000n,SolarField:500000n,Recycler:2000000n,DysonSphere:155000000000000000000n,AdvancedConveyor:75n,HyperConveyor:250n,WireLift:50n,CounterGate:10n,OverflowDrain:10n,TimerGate:50n,Supercharger:1000000000000000000000000000000000000000000000000000000000000000n,Singularity:10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000n,DimensionalRift:10000000000000000n};
     const prices = {...initialPrices};
+    const GRAPHICS_QUALITY=['auto','ultra','balanced','minimal'];
+    const GRAPHICS_THEMES=['steel','midnight','blueprint'];
+    const GRAPHICS_MOTION=['system','full','reduced'];
+    let graphicsQuality='auto',graphicsTheme='steel',graphicsMotion='system';
+    function applyGraphicsSettings(){
+      const reducedBySystem=typeof window.matchMedia==='function'&&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const memory=Number(navigator.deviceMemory)||8;
+      const cores=Number(navigator.hardwareConcurrency)||8;
+      const effective=graphicsQuality==='auto'?
+        (reducedBySystem||memory<=2||cores<=2?'minimal':
+          (memory<=4||window.innerWidth<700?'balanced':'ultra')):graphicsQuality;
+      document.body.dataset.graphicsQuality=effective;
+      document.body.dataset.graphicsMotion=graphicsMotion==='system'?
+        (reducedBySystem?'reduced':'full'):graphicsMotion;
+      document.body.dataset.factoryTheme=graphicsTheme;
+      $('graphicsQuality').value=graphicsQuality;
+      $('graphicsTheme').value=graphicsTheme;
+      $('graphicsMotion').value=graphicsMotion;
+    }
+    for(const [id,property,allowed] of [
+      ['graphicsQuality','quality',GRAPHICS_QUALITY],
+      ['graphicsTheme','theme',GRAPHICS_THEMES],
+      ['graphicsMotion','motion',GRAPHICS_MOTION]
+    ]){
+      $(id).addEventListener('change',event=>{
+        if(!allowed.includes(event.target.value))return;
+        if(property==='quality')graphicsQuality=event.target.value;
+        else if(property==='theme')graphicsTheme=event.target.value;
+        else graphicsMotion=event.target.value;
+        applyGraphicsSettings();markDirty();
+      });
+    }
     const fixedPriceMachines=new Set(['Wire','WireLift','Splitter','Sorter','ValueGate',
       'CounterGate','OverflowDrain','TimerGate']);
     function nextMachinePrice(type,paid){
@@ -948,6 +1181,7 @@
         const data={
           version:1,pricingVersion:3,money:String(money),
           stats:persistStats(),bottleneckVisible,
+          graphics:{quality:graphicsQuality,theme:graphicsTheme,motion:graphicsMotion},
           giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
           prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
           hotbar:inventory.hotbar,backpack:inventory.backpack,
@@ -972,6 +1206,13 @@
         loadStats(data.stats);
         bottleneckVisible=data.bottleneckVisible===true;
         $('bottleneckToggle').checked=bottleneckVisible;
+        graphicsQuality=GRAPHICS_QUALITY.includes(data.graphics?.quality)?
+          data.graphics.quality:'auto';
+        graphicsTheme=GRAPHICS_THEMES.includes(data.graphics?.theme)?
+          data.graphics.theme:'steel';
+        graphicsMotion=GRAPHICS_MOTION.includes(data.graphics?.motion)?
+          data.graphics.motion:'system';
+        applyGraphicsSettings();
         giantBalance.clear();
         if(Array.isArray(data.giantBalance)){
           for(const entry of data.giantBalance.slice(0,16)){
@@ -3574,6 +3815,7 @@
       if(document.visibilityState==='hidden')saveState();
     });
     loadSave();
+    applyGraphicsSettings();
     updatePageControls();
     updateAllShopPrices();
     updateMoney();
