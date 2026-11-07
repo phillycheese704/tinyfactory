@@ -623,6 +623,86 @@
     const validMachines=new Set(Object.keys(initialPrices));
     let saveDirty=false;
     function markDirty(){saveDirty=true;}
+    const undoStack=[],redoStack=[];
+    const MAX_UNDO=50;
+    let applyingHistory=false;
+    const deepCopy=v=>{
+      if(Array.isArray(v))return v.map(deepCopy);
+      if(v instanceof Map)return new Map([...v].map(([k,x])=>[k,deepCopy(x)]));
+      if(v&&typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,deepCopy(x)]));
+      return v;
+    };
+    function captureBuild(){
+      return {
+        placed:deepCopy(placed),
+        hotbar:inventory.hotbar.slice(),backpack:inventory.backpack.slice(),
+        hotbarCosts:inventoryCosts.hotbar.map(x=>x.slice()),backpackCosts:inventoryCosts.backpack.slice(),
+        prices:{...prices}
+      };
+    }
+    function buildFingerprint(snapshot){
+      const clean=(k,v)=>typeof v==='bigint'?v.toString()+'n':v instanceof Map?[...v]:v;
+      return JSON.stringify(snapshot,clean);
+    }
+    function updateUndoButtons(){
+      $('undoBtn').disabled=!undoStack.length;
+      $('redoBtn').disabled=!redoStack.length;
+      $('undoBtn').title=undoStack.length?'Undo: '+undoStack[undoStack.length-1].label:'Nothing to undo';
+      $('redoBtn').title=redoStack.length?'Redo: '+redoStack[redoStack.length-1].label:'Nothing to redo';
+    }
+    function runBuildAction(label,fn){
+      if(applyingHistory)return fn();
+      const before=captureBuild(),moneyBefore=money,spentBefore=stats.spent,boughtBefore=stats.purchases;
+      const result=fn(),after=captureBuild();
+      if(buildFingerprint(before)!==buildFingerprint(after)){
+        undoStack.push({label,before,after,moneyDelta:money-moneyBefore,
+          spentDelta:stats.spent-spentBefore,purchasesDelta:stats.purchases-boughtBefore});
+        if(undoStack.length>MAX_UNDO)undoStack.shift();
+        redoStack.length=0;
+        updateUndoButtons();
+      }
+      return result;
+    }
+    function restoreBuild(snapshot){
+      // Keep the live timers on machines that were unchanged by this edit.
+      // The build history never rewinds blob sales, production or playtime.
+      const existing=new Map(placed);
+      placed.clear();
+      for(const [key,saved] of snapshot.placed){
+        const obj=deepCopy(saved),current=existing.get(key);
+        if(current&&current.type===obj.type){
+          for(const prop of ['charges','lastAuto','lastPower','lastUpkeep','lastClick',
+            'poweredUntil','pulseUntil','wireUntil','batch','pending','batchRemaining','batchLastAt'])
+            if(current[prop]!==undefined)obj[prop]=deepCopy(current[prop]);
+        }
+        placed.set(key,obj);
+      }
+      inventory.hotbar.splice(0,HOTBAR_SIZE,...snapshot.hotbar);
+      inventory.backpack.splice(0,BACKPACK_SIZE,...snapshot.backpack);
+      for(let i=0;i<HOTBAR_SIZE;i++)inventoryCosts.hotbar[i]=snapshot.hotbarCosts[i].slice();
+      inventoryCosts.backpack.splice(0,BACKPACK_SIZE,...snapshot.backpackCosts);
+      Object.assign(prices,snapshot.prices);
+      for(const [id,blob] of blobs)if(!placed.has(blob.key))blobs.delete(id);
+      selectedHotbar=null;selected=null;moveFrom=null;moveActive=false;rotateActive=false;deleteActive=false;
+      wireLayoutsDirty=true;markDirty();
+      updateAllShopPrices();updateMoney();renderInventory();renderGrid();renderBlobs();
+    }
+    function travelHistory(redo=false){
+      const from=redo?redoStack:undoStack,to=redo?undoStack:redoStack,entry=from.pop();
+      if(!entry)return;
+      applyingHistory=true;
+      try{
+        restoreBuild(redo?entry.after:entry.before);
+        money+=redo?entry.moneyDelta:-entry.moneyDelta;
+        stats.spent+=redo?entry.spentDelta:-entry.spentDelta;
+        stats.purchases+=redo?entry.purchasesDelta:-entry.purchasesDelta;
+        updateMoney();markDirty();
+        to.push(entry);
+        showToast((redo?'Redid ':'Undid ')+entry.label);
+      }finally{applyingHistory=false;updateUndoButtons();}
+    }
+    $('undoBtn').addEventListener('click',()=>travelHistory(false));
+    $('redoBtn').addEventListener('click',()=>travelHistory(true));
     function parseMoney(value,fallback=0n){
       try{return BigInt(value);}catch{return fallback;}
     }
@@ -832,6 +912,7 @@
       wireLayoutsDirty=true;wirePorts.clear();
       deleteActive=false;rotateActive=false;moveActive=false;moveFrom=null;selectedHotbar=null;selected=null;
       clearDragStyles();dragging=null;
+      undoStack.length=0;redoStack.length=0;updateUndoButtons();
       updateAllShopPrices();updateMoney();renderInventory();renderGrid();renderBlobs();
       try{localStorage.removeItem(SAVE_KEY);}catch{}
       saveDirty=false;showToast('Save reset');
@@ -1564,6 +1645,10 @@
       });
     }
     function placeFromHotbar(index,hotbarIndex) {
+      return runBuildAction('Place '+(inventory.hotbar[hotbarIndex]||'machine'),
+        ()=>placeFromHotbarCore(index,hotbarIndex));
+    }
+    function placeFromHotbarCore(index,hotbarIndex){
       const key=cellKey(index),type=inventory.hotbar[hotbarIndex];
       if (!type || !canOccupy(key,type,1)) {
         if(type==='LaserCutter')showToast('Laser Cutter needs 3 clear tiles');
@@ -1610,9 +1695,11 @@
     $('sorterSave').addEventListener('click',()=>{
       const obj=editingSorter&&placed.get(editingSorter);
       if(obj?.type==='Sorter'){
-        obj.sortGrade=$('sorterGrade').value;
-        obj.sortDir=Number($('sorterDirection').value);
-        markDirty();renderGrid();
+        runBuildAction('Configure Sorter',()=>{
+          obj.sortGrade=$('sorterGrade').value;
+          obj.sortDir=Number($('sorterDirection').value);
+          markDirty();renderGrid();
+        });
       }
       closeSorter();
     });
@@ -1647,34 +1734,42 @@
         showToast('Choose a direction different from the conveyor');
         return;
       }
-      obj.gateThreshold=BigInt(amount);
-      obj.gateDir=chosen;
-      markDirty();renderGrid();closeValueGate();
+      runBuildAction('Configure Value Gate',()=>{
+        obj.gateThreshold=BigInt(amount);
+        obj.gateDir=chosen;
+        markDirty();renderGrid();
+      });
+      closeValueGate();
     });
     function useGridCell(index){
       if($('shopLayer').classList.contains('is-open')||$('backpackLayer').classList.contains('is-open'))return;
       const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=factoryNow();
       if(deleteActive){
-        const removed=removeMachine(key);
-        if(removed){
-          const refund=resaleValue(removed.obj.purchaseCost??0n);
-          money+=refund;updateMoney();showToast('Refunded $'+formatAmount(refund));renderGrid();renderBlobs();
-        }
+        runBuildAction('Delete machine',()=>{
+          const removed=removeMachine(key);
+          if(removed){
+            const refund=resaleValue(removed.obj.purchaseCost??0n);
+            money+=refund;updateMoney();showToast('Refunded $'+formatAmount(refund));renderGrid();renderBlobs();
+          }
+        });
         return;
       }
       if(moveActive){
         if(!moveFrom){if(obj){moveFrom=root;renderGrid();showToast('Tap destination');}}
-        else {if(moveMachine(moveFrom,key)){moveFrom=null;renderGrid();}}
+        else {if(runBuildAction('Move machine',()=>moveMachine(moveFrom,key))){moveFrom=null;renderGrid();}}
         return;
       }
       if(selectedHotbar!==null){placeFromHotbar(index,selectedHotbar);return;}
-      if(rotateActive&&obj){rotateMachine(root);return;}
+      if(rotateActive&&obj){runBuildAction('Rotate machine',()=>rotateMachine(root));return;}
       if(obj?.type==='Sorter'){openSorter(root);return;}
       if(obj?.type==='ValueGate'){openValueGate(root);return;}
       if(obj?.type==='Wire'){
-        obj.shape=(obj.shape+1)%3;
-        obj.manuallyRotated=true;
-        wireLayoutsDirty=true;markDirty();renderGrid();return;
+        runBuildAction('Change wire junction',()=>{
+          obj.shape=(obj.shape+1)%3;
+          obj.manuallyRotated=true;
+          wireLayoutsDirty=true;markDirty();renderGrid();
+        });
+        return;
       }
       if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj?.type)){
         // Manual production works whether or not the dropper is powered.
@@ -1686,8 +1781,10 @@
           renderGrid();
         }
       }else if(['Turbine','HydraulicPump'].includes(obj?.type)){
-        obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
-        markDirty();renderGrid();
+        runBuildAction('Toggle generator',()=>{
+          obj.enabled=!obj.enabled;obj.lastPower=now;obj.lastUpkeep=now;
+          markDirty();renderGrid();
+        });
       }
     }
 
@@ -1753,6 +1850,9 @@
       markDirty();return true;
     }
     function purchase(item){
+      return runBuildAction('Buy '+item,()=>purchaseBatch(item));
+    }
+    function purchaseBatch(item){
       const choice=$('bulkAmount').value;
       const requested=choice==='max'?1000:Math.max(1,Math.min(25,Number(choice)||1));
       let count=0;
