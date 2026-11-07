@@ -190,7 +190,11 @@ async function run(){
       await page.keyboard.press('0');
       await page.keyboard.press('+');
       await page.keyboard.press('-');
-      await page.keyboard.press('Space');
+      await page.evaluate(()=>{
+        document.dispatchEvent(new KeyboardEvent('keydown',{
+          bubbles:true,key:' ',code:'Space'
+        }));
+      });
       assert.equal(await page.locator('#factoryGrid').evaluate(el=>el.style.transform),'',
         'Former keyboard camera shortcuts must not move the board');
       if(profile.gamepad){
