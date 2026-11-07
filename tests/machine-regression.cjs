@@ -447,6 +447,14 @@ function runSuite(gameSource){
       reloaded.game.graphics().quality==='minimal'&&
       reloaded.document.body.dataset.factoryTheme==='midnight';
   });
+
+  verify('Factory production triggers visual pulse without full-board animation spam',()=>{
+    const a=boot(),g=a.game;
+    put(g,'4,4','FusionReactor');
+    a.clock(5000);g.tickFactory();
+    const columns=g.grid()[0],node=a.get('factoryGrid').children[4*columns+4];
+    return !!node?.classList.contains('machine-active-pulse');
+  });
   return{total:checks.length,passed:checks.filter(c=>c.pass).length,
     failures:checks.filter(c=>!c.pass),checks};
 }
