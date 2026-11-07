@@ -1149,16 +1149,25 @@
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
+    // Keep balances as exact BigInts, with compact display units past
+    // quadrillion. Extremely large values use scientific notation.
+    const moneyUnits=['','K','M','B','T','Qa','Qi','Sx','Sp','Oc','No','Dc',
+      'Ud','Dd','Td','Qad','Qid','Sxd','Spd','Ocd','Nod','Vg'];
     function formatAmount(value) {
-      const units = [[1000000000000000n, 'Qa'], [1000000000000n, 'T'], [1000000000n, 'B'], [1000000n, 'M'], [1000n, 'K']];
-      for (const [size, unit] of units) {
-        if (value >= size) {
-          const whole = value / size;
-          const decimal = (value % size) * 10n / size;
-          return `${whole}${decimal > 0n && whole < 100n ? '.' + decimal : ''}${unit}`;
-        }
+      const negative=value<0n,amount=negative?-value:value;
+      if(amount<1000n)return value.toString();
+      let scale=1n,index=0;
+      while(index<moneyUnits.length-1 && amount>=scale*1000n){
+        scale*=1000n;index++;
       }
-      return value.toString();
+      const sign=negative?'-':'';
+      if(index===moneyUnits.length-1 && amount>=scale*1000n){
+        const digits=amount.toString();
+        const fraction=digits[1]&&digits[1]!=='0'?'.'+digits[1]:'';
+        return sign+digits[0]+fraction+'e'+(digits.length-1);
+      }
+      const whole=amount/scale,decimal=(amount%scale)*10n/scale;
+      return sign+whole+(decimal>0n&&whole<100n?'.'+decimal:'')+moneyUnits[index];
     }
     function formatPrice(value) { return value === 0n ? 'FREE' : '$' + formatAmount(value); }
     function clearMoneyTrend(){
