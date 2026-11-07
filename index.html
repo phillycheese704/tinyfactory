@@ -215,6 +215,12 @@
     body.delete-active .grid-cell.occupied:hover { background: #ffdede; box-shadow: inset 0 0 0 2px #d84141; }
     .toast { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--hot-slot) + 44px); left: 50%; transform: translate(-50%, 8px); z-index: 80; opacity: 0; pointer-events: none; background: #fff8d6; border: var(--stroke); border-radius: 12px 9px 13px 10px; box-shadow: 3px 4px 0 var(--ink); padding: 10px 20px; font-size: 15px; font-weight: 800; white-space: nowrap; transition: opacity .18s, transform .18s; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .gamepad-status{position:fixed;left:50%;top:74px;transform:translateX(-50%);z-index:15;background:#f0eaff;border:2px solid #48357b;padding:5px 11px;border-radius:10px;font:800 12px/1.3 sans-serif;text-align:center;max-width:90vw;pointer-events:none}
+    .gamepad-status[hidden]{display:none}
+    .grid-cell.controller-cursor{outline:4px solid #915be8;outline-offset:-4px;box-shadow:inset 0 0 0 3px #fff!important;z-index:2}
+    .grid-cell.controller-cursor::after{content:'+';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;color:#5825ae;font:900 28px/1 sans-serif;text-shadow:1px 1px white,-1px -1px white}
+    @media (pointer:coarse){.shop-field input,.shop-field select,.sorter-config select,.sorter-config input{font-size:16px;min-height:44px}.page-arrow{min-height:56px}.item .item-info{min-width:40px;min-height:40px}}
+    @media (min-width:1200px) and (min-height:650px){.gamepad-status{font-size:15px;top:80px}.page-arrow{width:54px;height:72px}}
     .page-nav{position:fixed;z-index:9;left:0;right:0;top:50%;pointer-events:none;display:flex;align-items:center;justify-content:space-between;transform:translateY(-50%);padding:0 max(4px,env(safe-area-inset-left));gap:8px}
     .page-arrow{pointer-events:auto;display:grid;place-items:center;width:clamp(36px,5vw,54px);height:clamp(58px,8vw,76px);border:2px solid #363636;border-radius:14px;background:#fff7d9dd;box-shadow:2px 3px 0 #343434;color:#353535;font:900 48px/1 sans-serif;touch-action:manipulation;cursor:pointer}
     .page-arrow:disabled{opacity:.25;cursor:default}
@@ -405,6 +411,7 @@
       <div class="bag-grid" id="bagGrid" aria-label="36 backpack slots"></div>
     </section>
   </div>
+  <div id="gamepadStatus" class="gamepad-status" role="status" aria-live="polite" hidden>🎮 Controller ready — A interact · B back · X rotate · Y shop</div>
   <nav class="page-nav" aria-label="Factory pages">
     <button type="button" id="prevPage" class="page-arrow page-prev" aria-label="Previous factory page" disabled>‹</button>
     <span id="pageIndicator" class="page-indicator" aria-live="polite">Page 1</span>
@@ -740,7 +747,9 @@
       selectedHotbar=null;selected=null;deleteActive=false;rotateActive=false;
       moveActive=false;moveFrom=null;
       clearPlacementPreview();
-      renderInventory();buildGrid();renderStats();updatePageControls();markDirty();
+      renderInventory();buildGrid();
+      if(gamepadConnected)setGamepadCursor(Math.min(gamepadCursor,gridCols*gridRows-1));
+      renderStats();updatePageControls();markDirty();
     }
     function requestNextPage(){
       if(currentPage+1<factoryPages.length){switchFactoryPage(currentPage+1);return;}
@@ -3310,6 +3319,150 @@
       if($('resetConfirmText').value.trim().toUpperCase()!=='RESET')return;
       closeResetConfirm();setSimulationPaused(false);resetGame();
     });
+    // Standard gamepad support for console browsers, PC controllers, and
+    // Bluetooth controllers on tablets/phones. No gamepad = no polling actions.
+    let gamepadConnected=false,gamepadCursor=0,gamepadLastMove=0;
+    let gamepadLastZoom=0,gamepadFocusIndex=0;
+    let gamepadPrevious=new Set();
+    function currentControllerDialog(){
+      for(const id of ['resetPanel','unlockPagePanel','routingPanel','sorterPanel',
+        'valueGatePanel','shopInfoPanel','statsPanel']){
+        if($(id).classList.contains('open'))return $(id);
+      }
+      if($('shopLayer').classList.contains('is-open'))return $('shopPanel');
+      if($('backpackLayer').classList.contains('is-open'))return $('backpackPanel');
+      return null;
+    }
+    function controllerUIControls(root){
+      return [...root.querySelectorAll('button,[role="button"],input,select')]
+        .filter(el=>!el.disabled&&!(el.closest?.('[data-hidden="true"]'))&&
+          el.getClientRects?.().length!==0);
+    }
+    function focusControllerUI(step=0){
+      const panel=currentControllerDialog();
+      if(!panel)return;
+      const nodes=controllerUIControls(panel);
+      if(!nodes.length)return;
+      gamepadFocusIndex=((gamepadFocusIndex+step)%nodes.length+nodes.length)%nodes.length;
+      const focus=nodes[gamepadFocusIndex];
+      focus.focus?.();
+      focus.scrollIntoView?.({block:'nearest',inline:'nearest'});
+    }
+    function closeControllerDialog(){
+      if($('resetPanel').classList.contains('open'))closeResetConfirm();
+      else if($('unlockPagePanel').classList.contains('open'))closePageUnlock();
+      else if($('routingPanel').classList.contains('open'))closeRouting();
+      else if(editingSorter!==null)closeSorter();
+      else if(editingValueGate!==null)closeValueGate();
+      else if($('shopInfoPanel').classList.contains('open'))closeShopInfo();
+      else if($('statsPanel').classList.contains('open'))setStatsOpen(false);
+      else if($('shopLayer').classList.contains('is-open'))setShop(false);
+      else if($('backpackLayer').classList.contains('is-open'))setBackpack(false);
+      else{
+        selectedHotbar=null;deleteActive=false;rotateActive=false;moveActive=false;moveFrom=null;
+        setPanMode(false);renderInventory();renderGrid();
+      }
+    }
+    function setGamepadCursor(index){
+      const cells=$('factoryGrid').querySelectorAll('.grid-cell');
+      if(!cells.length)return;
+      cells[gamepadCursor]?.classList.remove('controller-cursor');
+      gamepadCursor=Math.max(0,Math.min(cells.length-1,index));
+      const cell=cells[gamepadCursor];
+      cell.classList.add('controller-cursor');
+      const rect=cell.getBoundingClientRect();
+      if(rect.left<50)panX+=50-rect.left;
+      if(rect.right>window.innerWidth-50)panX-=rect.right-window.innerWidth+50;
+      if(rect.top<110)panY+=110-rect.top;
+      if(rect.bottom>window.innerHeight-140)panY-=rect.bottom-window.innerHeight+140;
+      updateViewport();
+    }
+    function cycleGamepadHotbar(offset){
+      let index=selectedHotbar??(offset<0?0:HOTBAR_SIZE-1);
+      for(let step=0;step<HOTBAR_SIZE;step++){
+        index=(index+offset+HOTBAR_SIZE)%HOTBAR_SIZE;
+        if(inventory.hotbar[index]){tapSlot({zone:'hotbar',index});break;}
+      }
+    }
+    function gamepadAdjustControl(direction){
+      const panel=currentControllerDialog();
+      if(!panel)return false;
+      const elements=controllerUIControls(panel),el=elements[gamepadFocusIndex];
+      if(!el)return false;
+      if(el.tagName==='SELECT'&&el.options?.length){
+        el.selectedIndex=(el.selectedIndex+direction+el.options.length)%el.options.length;
+        el.dispatchEvent(new Event('change',{bubbles:true}));
+        return true;
+      }
+      if(el.tagName==='INPUT'&&el.type==='number'){
+        if(direction>0)el.stepUp();else el.stepDown();
+        el.dispatchEvent(new Event('input',{bubbles:true}));
+        return true;
+      }
+      return false;
+    }
+    function pollGamepads(){
+      if(typeof navigator.getGamepads!=='function')return;
+      let pad;
+      try{pad=[...navigator.getGamepads()].find(p=>p?.connected!==false);}catch{return;}
+      if(!pad){
+        if(gamepadConnected){
+          gamepadConnected=false;gamepadPrevious.clear();
+          $('gamepadStatus').hidden=true;
+          $('factoryGrid').querySelectorAll('.controller-cursor').forEach(c=>c.classList.remove('controller-cursor'));
+        }
+        return;
+      }
+      if(!gamepadConnected){
+        gamepadConnected=true;
+        $('gamepadStatus').hidden=false;
+        gamepadCursor=Math.floor(gridRows/2)*gridCols+Math.floor(gridCols/2);
+        setGamepadCursor(gamepadCursor);
+      }
+      const pressed=new Set();
+      for(let i=0;i<(pad.buttons?.length||0);i++)
+        if(pad.buttons[i]?.pressed||pad.buttons[i]?.value>.55)pressed.add(i);
+      const edge=i=>pressed.has(i)&&!gamepadPrevious.has(i);
+      const panel=currentControllerDialog(),now=performance.now();
+      const horizontal=pressed.has(14)||(pad.axes?.[0]??0)<-.7?-1:
+        pressed.has(15)||(pad.axes?.[0]??0)>.7?1:0;
+      const vertical=pressed.has(12)||(pad.axes?.[1]??0)<-.7?-1:
+        pressed.has(13)||(pad.axes?.[1]??0)>.7?1:0;
+      if((horizontal||vertical)&&now-gamepadLastMove>145){
+        if(panel){
+          if(!horizontal||!gamepadAdjustControl(horizontal))focusControllerUI(vertical||horizontal);
+        }else setGamepadCursor(gamepadCursor+vertical*gridCols+horizontal);
+        gamepadLastMove=now;
+      }
+      if(edge(1))closeControllerDialog();
+      if(edge(0)){
+        if(panel){
+          const controls=controllerUIControls(panel);
+          const focus=controls[gamepadFocusIndex];
+          if(focus&&focus.tagName!=='INPUT'&&focus.tagName!=='SELECT')focus.click();
+          else focus?.focus();
+        }else $('factoryGrid').querySelectorAll('.grid-cell')[gamepadCursor]?.click();
+      }
+      if(!panel){
+        if(edge(2))$('rotateToggle').click();
+        if(edge(3))setShop(true);
+        if(edge(4))cycleGamepadHotbar(-1);
+        if(edge(5))cycleGamepadHotbar(1);
+        if(edge(6))$('prevPage').click();
+        if(edge(7))$('nextPage').click();
+        if(edge(8))setStatsOpen(true);
+        if(edge(9))$('pauseBtn').click();
+        if(edge(11))$('zoomReset').click();
+        const zoomAxis=pad.axes?.[3]??0;
+        if(Math.abs(zoomAxis)>.7&&now-gamepadLastZoom>200){
+          setZoom(viewZoom+(zoomAxis<0?.1:-.1));gamepadLastZoom=now;
+        }
+      }else if(!gamepadPrevious.size)gamepadFocusIndex=0;
+      gamepadPrevious=pressed;
+    }
+    setInterval(pollGamepads,70);
+    window.addEventListener('gamepadconnected',()=>pollGamepads());
+    window.addEventListener('gamepaddisconnected',()=>pollGamepads());
     // Long press (3 seconds) the money display to open a reset confirmation.
     const balance=$('balance');
     let resetHold=null,holdTimer=null;
