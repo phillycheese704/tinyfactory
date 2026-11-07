@@ -2874,6 +2874,12 @@
       const tile=placed.get(key),root=rootKey(key),machine=placed.get(root);
       if(!machine)return false;
       const type=machine.type;
+      // Multi-tile processors apply their effect on entry only. Blobs pass
+      // through their exit tile without receiving a second multiplier/clone.
+      if(megaProcessors.has(type)){
+        const ports=megaPorts(root,machine);
+        if(!ports||ports.entry!==key)return false;
+      }
       if(type==='CounterGate'){machine.counter=(machine.counter||0)+1;markDirty();}
       if(type==='Recycler'){
         const power={normal:1,bronze:1,silver:1,gold:4,
