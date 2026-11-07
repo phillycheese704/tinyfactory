@@ -62,6 +62,13 @@ async function run(){
         'Unexpected horizontal overflow ('+width+' > '+profile.width+')');
       await page.locator('#statsToggle').click();
       assert(await page.locator('#statsPanel').evaluate(el=>el.classList.contains('open')));
+      // Graphics preferences must work on WebKit touch and Chromium desktop.
+      await page.locator('#graphicsQuality').selectOption('ultra');
+      await page.locator('#graphicsTheme').selectOption('midnight');
+      await page.locator('#graphicsMotion').selectOption('full');
+      assert.equal(await page.locator('body').getAttribute('data-graphics-quality'),'ultra');
+      assert.equal(await page.locator('body').getAttribute('data-factory-theme'),'midnight');
+      assert.equal(await page.locator('body').getAttribute('data-graphics-motion'),'full');
       await page.waitForTimeout(350); // Capture fully opened dialog, not its entrance transition.
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();
@@ -77,6 +84,22 @@ async function run(){
       await page.waitForTimeout(350);
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
+      const modelChecks=await page.evaluate(()=>{
+        const names=['FusionChamber','Quantumifyier','Cloner','Infinifyer','Cleaner',
+          'QuantumComputer','MightyDropper','RainbowDropper','TurboDropper','QuantumDropper',
+          'InfiDropper','FusionReactor','SolarField','Recycler','DysonSphere','AdvancedConveyor',
+          'HyperConveyor','WireLift','CounterGate','OverflowDrain','TimerGate','Supercharger',
+          'Singularity','DimensionalRift'];
+        return names.map(name=>{
+          const svg=document.querySelector('#buy'+name+' svg');
+          const rect=svg?.getBoundingClientRect();
+          return {name,valid:!!svg?.querySelector('.machine-detail')&&
+            !!svg.querySelector('[class*="model-"]')&&rect.width>0&&rect.height>0,
+            artwork:svg?.innerHTML};
+        });
+      });
+      assert(modelChecks.every(item=>item.valid),'Advanced machine models must render with detail on every browser');
+      assert.equal(new Set(modelChecks.map(item=>item.artwork)).size,24,'All 24 models must be distinct');
       await page.locator('#buyMightyDropper .item-info').click();
       assert(await page.locator('#shopInfoPanel').evaluate(el=>el.classList.contains('open')));
       await page.locator('#closeShopInfo').click();
@@ -100,8 +123,39 @@ async function run(){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
       }
-      await page.waitForTimeout(200);
+      // Create a visual-only gallery of real machine SVGs, including 4x4/6x6
+      // footprints, to make screenshots valuable for actual art inspection.
+      const gallery=await page.evaluate(()=>{
+        const singles=['MightyDropper','RainbowDropper','TurboDropper','QuantumDropper',
+          'InfiDropper','QuantumComputer','Cleaner','Supercharger','Singularity',
+          'DimensionalRift','AdvancedConveyor','HyperConveyor'];
+        let count=0;
+        for(let i=0;i<singles.length;i++){
+          const row=2+Math.floor(i/4)*3,col=2+(i%4)*2,key=row+','+col;
+          if(row>=gridRows||col>=gridCols||placed.has(key))continue;
+          placed.set(key,machine(singles[i]));count++;
+        }
+        for(const [type,row,col] of [
+          ['DysonSphere',3,gridCols-7],
+          ['FusionReactor',Math.max(10,gridRows-5),gridCols-6]
+        ]){
+          const key=row+','+col;
+          if(canOccupy(key,type,1)){
+            const obj=machine(type);placed.set(key,obj);placeMegaParts(key,obj);count++;
+          }
+        }
+        renderGrid();
+        return {count,tiles:document.querySelectorAll('#factoryGrid .occupied').length};
+      });
+      assert(gallery.count>=12&&gallery.tiles>=12,'Machine gallery must populate real board tiles');
+      await page.waitForTimeout(350);
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-factory.png')});
+      await page.locator('#statsToggle').click();
+      await page.locator('#graphicsQuality').selectOption('minimal');
+      await page.locator('#graphicsMotion').selectOption('reduced');
+      assert.equal(await page.locator('body').getAttribute('data-graphics-quality'),'minimal');
+      assert.equal(await page.locator('body').getAttribute('data-graphics-motion'),'reduced');
+      await page.locator('#closeStats').click();
       assert.deepEqual(errors,[],'No uncaught game script exceptions allowed');
       console.log('PASS '+profile.name);
       successes++;
