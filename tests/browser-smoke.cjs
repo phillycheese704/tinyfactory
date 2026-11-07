@@ -62,6 +62,7 @@ async function run(){
         'Unexpected horizontal overflow ('+width+' > '+profile.width+')');
       await page.locator('#statsToggle').click();
       assert(await page.locator('#statsPanel').evaluate(el=>el.classList.contains('open')));
+      await page.waitForTimeout(350); // Capture fully opened dialog, not its entrance transition.
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();
       await page.locator('#shopToggle').click();
@@ -73,6 +74,7 @@ async function run(){
       assert(await page.locator('#buyCounterGate').isVisible());
       assert(await page.locator('#buyOverflowDrain').isVisible());
       assert(await page.locator('#buyTimerGate').isVisible());
+      await page.waitForTimeout(350);
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
       await page.locator('#buyMightyDropper .item-info').click();
