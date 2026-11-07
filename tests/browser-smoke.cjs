@@ -128,10 +128,66 @@ async function run(){
       assert.equal(await page.locator('#pauseBtn').getAttribute('aria-pressed'),'true');
       await page.locator('#pauseBtn').click();
       assert.equal(await page.locator('#pauseBtn').getAttribute('aria-pressed'),'false');
-      await page.locator('#zoomIn').click();
-      assert.notEqual(await page.locator('#zoomLevel').innerText(),'100%');
-      await page.locator('#zoomReset').click();
-      assert.equal(await page.locator('#zoomLevel').innerText(),'100%');
+      // Keep camera gestures off the HUD and check their world-space geometry.
+      assert.equal(await page.locator('#panBtn,#zoomOut,#zoomIn,#zoomReset,#zoomLevel').count(),0,
+        'No on-screen pan or zoom controls');
+      const camera=await page.evaluate(()=>{
+        const board=document.querySelector('#factoryGrid');
+        const hud=['#shopToggle','.hotbar-wrap','#pageIndicator','#balance']
+          .map(sel=>document.querySelector(sel));
+        const rect=el=>{
+          const r=el.getBoundingClientRect();return [r.left,r.top,r.width,r.height];
+        };
+        const hudBefore=hud.map(rect);
+        const zoom=()=>Number(board.style.transform.match(/scale\\(([^)]+)\\)/)?.[1]||1);
+        const touch=(type,id,x,y)=>board.dispatchEvent(new PointerEvent(type,{
+          bubbles:true,cancelable:true,pointerId:id,pointerType:'touch',
+          button:0,clientX:x,clientY:y
+        }));
+        const initial=rect(board),x=initial[0]+initial[2]*.38,y=initial[1]+initial[3]*.42;
+        touch('pointerdown',101,x,y);
+        touch('pointermove',101,x+2,y+2);
+        touch('pointerup',101,x+2,y+2);
+        const afterTap=rect(board);
+        const beforeZoom=zoom();
+        board.dispatchEvent(new WheelEvent('wheel',{
+          bubbles:true,cancelable:true,deltaY:-180,clientX:x,clientY:y
+        }));
+        const afterWheel=rect(board),wheelZoom=zoom();
+        const anchorError=Math.hypot(
+          (x-afterWheel[0])/wheelZoom-(x-initial[0])/beforeZoom,
+          (y-afterWheel[1])/wheelZoom-(y-initial[1])/beforeZoom
+        );
+        touch('pointerdown',102,x,y);
+        touch('pointermove',102,x+42,y+29);
+        touch('pointerup',102,x+42,y+29);
+        const afterPan=rect(board);
+        const cx=afterPan[0]+afterPan[2]*.5,cy=afterPan[1]+afterPan[3]*.5;
+        touch('pointerdown',103,cx-26,cy);
+        touch('pointerdown',104,cx+26,cy);
+        touch('pointermove',104,cx+62,cy);
+        const pinchZoom=zoom();
+        touch('pointerup',104,cx+62,cy);
+        touch('pointerup',103,cx-26,cy);
+        const hudAfter=hud.map(rect);
+        return {
+          tapStayed:Math.hypot(afterTap[0]-initial[0],afterTap[1]-initial[1])<1,
+          wheelZoomed:wheelZoom>beforeZoom,anchorError,
+          panX:afterPan[0]-afterWheel[0],panY:afterPan[1]-afterWheel[1],
+          pinchZoomed:pinchZoom>wheelZoom,
+          hudFixed:hudAfter.every((r,i)=>r.every((v,j)=>Math.abs(v-hudBefore[i][j])<1))
+        };
+      });
+      assert(camera.tapStayed,'A tap must not pan');
+      assert(camera.wheelZoomed,'Wheel must zoom');
+      assert(camera.anchorError<1,'Zoom must keep cursor anchored ('+camera.anchorError+')');
+      assert(Math.abs(camera.panX-42)<1&&Math.abs(camera.panY-29)<1,
+        'Drag must pan by the finger delta');
+      assert(camera.pinchZoomed,'Pinch must zoom');
+      assert(camera.hudFixed,'Zoom and pan must not move shop, inventory or status UI');
+      await page.keyboard.press('0');
+      assert.match(await page.locator('#factoryGrid').getAttribute('style'),
+        /translate\\(0px, 0px\\) scale\\(1\\)/,'0 must reset the camera');
       if(profile.gamepad){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
