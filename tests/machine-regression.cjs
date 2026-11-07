@@ -378,6 +378,25 @@ function runSuite(gameSource){
     m.branchDir=2;m.timerSeconds=1;a.clock(1500);
     return g.blobDestination(g.newBlob('gold','6,6'))==='7,6';
   });
+
+  verify('Large processor applies value multiplier exactly once, not at its exit',()=>{
+    const g=boot().game,m=put(g,'4,4','Quantumifyier'),ports=g.megaPorts('4,4',m);
+    const old=Math.random;Math.random=()=>.5;
+    try{
+      const b=g.newBlob('diamond',ports.entry);
+      g.handleBlobArrival(b,ports.entry,1000);
+      const afterEntry=b.worth;
+      g.handleBlobArrival(b,ports.exit,1300);
+      return afterEntry===500n&&b.worth===500n&&m.pending.length===0;
+    }finally{Math.random=old;}
+  });
+  verify('Cloner only creates one clone per passing blob',()=>{
+    const g=boot().game,m=put(g,'4,4','Cloner'),p=g.megaPorts('4,4',m);
+    const b=g.newBlob('diamond',p.entry);
+    g.handleBlobArrival(b,p.entry,1000);
+    g.handleBlobArrival(b,p.exit,1250);
+    return m.pending.length===1&&m.pending[0].worth===50n;
+  });
   return{total:checks.length,passed:checks.filter(c=>c.pass).length,
     failures:checks.filter(c=>!c.pass),checks};
 }
