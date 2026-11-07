@@ -519,7 +519,8 @@
       const now = factoryNow();
       return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0,
         batch:[],pending:[],batchRemaining:3000,batchLastAt:now,sortGrade:'diamond',sortDir:2,
-        gateThreshold:50n,gateDir:2 };
+        gateThreshold:50n,gateDir:2,branchChance:50,branchDir:2,forwardDir:1,
+        counterN:3,counter:0,timerSeconds:3 };
     }
     let gridCols = MIN_GRID_SIDE;
     let gridRows = MIN_GRID_SIDE;
@@ -784,7 +785,9 @@
     function serializeBlob(blob){
       return {id:blob.id,key:blob.key,worth:String(blob.worth),shiny:!!blob.shiny,ember:!!blob.ember,
         melted:!!blob.melted,plate:!!blob.plate,color:blob.color??'black',neon:!!blob.neon,
-        grade:blob.grade??'normal',fromKey:blob.fromKey??null,state:blob.state};
+        grade:blob.grade??'normal',fromKey:blob.fromKey??null,state:blob.state,
+        mighty:!!blob.mighty,infi:!!blob.infi,cleaned:!!blob.cleaned,
+        quantumEnhanced:!!blob.quantumEnhanced};
     }
     function reviveBlob(data){
       return {...data,worth:parseMoney(data.worth,1n),shiny:!!data.shiny,ember:!!data.ember,
@@ -2014,11 +2017,13 @@
         });
         return;
       }
-      if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj?.type)){
+      if(allDroppers.has(obj?.type)){
         if(pausedAt!==null)return;
         // Manual production works whether or not the dropper is powered.
         // Each dropper keeps its own click cooldown, independent of auto drops.
-        const cooldown=obj.type==='Dropper'?500:250;
+        const cooldown=obj.type==='Dropper'?500:
+          obj.type==='MightyDropper'?2000:obj.type==='RainbowDropper'?650:
+          obj.type==='QuantumDropper'?1000:obj.type==='InfiDropper'?222.1:250;
         if(now-obj.lastClick>=cooldown && spawnBlob(root,now)){
           obj.lastClick=now;
           obj.pulseUntil=now+200;
@@ -2350,25 +2355,49 @@
       const gold=16.6666667*(1-t)+40*t;
       return pick<silver?'silver':pick<silver+gold?'gold':'diamond';
     }
-    function spawnBlob(key, now=factoryNow()){
-      const dropper=placed.get(key);
-      if(!['Dropper','AdvancedDropper','SuperDropper'].includes(dropper?.type)||
-        [...blobs.values()].some(b=>b.key===key))return false;
-      const superDrop=dropper.type==='SuperDropper',advanced=dropper.type==='AdvancedDropper';
-      const grade=superDrop?superDropGrade(powerLevel(dropper,now)):
-        advanced?(Math.random()<0.09544?'silver':'bronze'):'normal';
-      const values={normal:1n,bronze:5n,silver:15n,gold:50n,diamond:100n};
-      const colors={normal:'black',bronze:'bronze',silver:'silver',gold:'gold',diamond:'diamond'};
+    const blobValues={normal:1n,bronze:5n,silver:15n,gold:50n,diamond:100n,
+      rainbow:1000n,quantum:5000n};
+    const blobColors={normal:'black',bronze:'bronze',silver:'silver',gold:'gold',
+      diamond:'diamond',rainbow:'rainbow',quantum:'quantum'};
+    function newBlob(grade,key,now=factoryNow(),dropper=null){
       const id=nextBlobId++;
       stats.produced++;
-      blobs.set(id,{id,key,worth:values[grade],shiny:false,ember:false,melted:false,plate:false,
-        color:colors[grade],neon:false,grade,fromKey:null,state:'waiting',arrivedAt:now,collectAt:0});
+      return {id,key,worth:blobValues[grade],shiny:false,ember:false,melted:false,plate:false,
+        color:blobColors[grade],neon:false,grade,fromKey:null,state:'waiting',
+        arrivedAt:now,collectAt:0,mighty:dropper?.type==='MightyDropper',
+        infi:dropper?.type==='InfiDropper',cleaned:false,quantumEnhanced:false};
+    }
+    function chooseDropGrade(type,power=0){
+      const chance=Math.random();
+      if(type==='MightyDropper')return 'gold';
+      if(type==='QuantumDropper')return 'quantum';
+      if(type==='RainbowDropper')return chance<.10?'silver':chance<.80?'gold':
+        chance<.95?'diamond':'rainbow';
+      if(type==='TurboDropper')return chance<.85?'normal':chance<.92?'bronze':
+        chance<.955?'silver':chance<.98?'gold':chance<.99?'diamond':'rainbow';
+      if(type==='InfiDropper')return ['normal','bronze','silver','gold','diamond','rainbow','quantum']
+        [Math.floor(chance*7)];
+      if(type==='SuperDropper')return superDropGrade(power);
+      if(type==='AdvancedDropper')return chance<.09544?'silver':'bronze';
+      return 'normal';
+    }
+    function spawnBlob(key, now=factoryNow()){
+      const dropper=placed.get(key);
+      if(!allDroppers.has(dropper?.type)||[...blobs.values()].some(b=>b.key===key))return false;
+      const power=powerLevel(dropper,now),grade=chooseDropGrade(dropper.type,power);
+      const blob=newBlob(grade,key,now,dropper);
+      blobs.set(blob.id,blob);
+      if(dropper.type==='InfiDropper'&&Math.random()<(power>0?.05:.02)){
+        // Extra blobs are released one at a time as the line clears.
+        for(let i=0;i<9;i++)dropper.pending.push(newBlob(chooseDropGrade(dropper.type,power),key,now,dropper));
+      }
       markDirty();renderBlobs();return true;
     }
     function renderBlobs(){
       const layer=$('blobLayer');if(!layer)return;
       const visible=new Set();
-      const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',gold:'#f4c63f',diamond:'#8be7ff',blue:'#4ac1ff',red:'#ff324f'};
+      const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',gold:'#f4c63f',
+        diamond:'#8be7ff',rainbow:'#f09fff',quantum:'#9e8bff',blue:'#4ac1ff',red:'#ff324f'};
       for(const blob of blobs.values()){
         const [row,col]=coords(blob.key);
         if(row>=gridRows||col>=gridCols)continue;
@@ -2401,9 +2430,11 @@
       {grade:'bronze',color:'bronze',worth:5n},
       {grade:'silver',color:'silver',worth:15n},
       {grade:'gold',color:'gold',worth:50n},
-      {grade:'diamond',color:'diamond',worth:100n}
+      {grade:'diamond',color:'diamond',worth:100n},
+      {grade:'rainbow',color:'rainbow',worth:1000n}
     ];
     function upgradeBlob(blob){
+      if(blob.grade==='quantum')return;
       const stage=blobTiers.findIndex(tier=>tier.grade===blob.grade);
       const current=Math.max(0,stage<0?blobTiers.findIndex(tier=>tier.color===blob.color):stage);
       const next=blobTiers[Math.min(current+1,blobTiers.length-1)];
@@ -2489,7 +2520,7 @@
         }
         return null;
       }
-      if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj.type)){
+      if(allDroppers.has(obj.type)){
         const next=neighbor(blob.key,obj.direction);
         return next&&canFeedConveyor(blob.key,next,obj.direction)?next:null;
       }
@@ -2729,16 +2760,21 @@
           obj.charges=obj.charges.filter(t=>t>now);
           if(prev!==obj.charges.length)mustRender=true;
         }
-        if(['Dropper','AdvancedDropper','SuperDropper'].includes(obj.type)){
+        if(allDroppers.has(obj.type)){
           const count=powerLevel(obj,now);
-          if(count>0){
-            const interval=obj.type==='SuperDropper'
-              ?300-50*(count-1)/99:Math.max(300,1000-700*count/100);
-            if(now-obj.lastAuto>=interval){
-              if(spawnBlob(key,now)){obj.pulseUntil=now+200;mustRender=true;}
-              obj.lastAuto=now;
-            }
-          } else if(obj.poweredUntil){obj.poweredUntil=0;mustRender=true;}
+          // Legacy droppers keep their original power-driven automation.
+          const custom={'MightyDropper':2000,'RainbowDropper':650,'TurboDropper':250,
+            'QuantumDropper':1000,'InfiDropper':222.1}[obj.type];
+          const interval=custom?(count>0?custom/2:custom):
+            obj.type==='SuperDropper'?300-50*(count-1)/99:
+            Math.max(300,1000-700*count/100);
+          if((custom||count>0)&&now-obj.lastAuto>=interval){
+            if(obj.pending.length&&![...blobs.values()].some(b=>b.key===key)){
+              const pending=obj.pending.shift();pending.key=key;pending.arrivedAt=now;
+              blobs.set(pending.id,pending);markDirty();renderBlobs();mustRender=true;
+            }else if(spawnBlob(key,now)){obj.pulseUntil=now+200;mustRender=true;}
+            obj.lastAuto=now;
+          }else if(!count&&obj.poweredUntil){obj.poweredUntil=0;mustRender=true;}
         }
         if(obj.type==='ParticleAccelerator'){
           const active=powerLevel(obj,now)>0&&acceleratorReady(key);
