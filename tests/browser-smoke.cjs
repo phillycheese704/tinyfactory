@@ -128,92 +128,75 @@ async function run(){
       assert.equal(await page.locator('#pauseBtn').getAttribute('aria-pressed'),'true');
       await page.locator('#pauseBtn').click();
       assert.equal(await page.locator('#pauseBtn').getAttribute('aria-pressed'),'false');
-      // Keep camera gestures off the HUD and check their world-space geometry.
+      // The factory is screen-fitted, not a movable or scalable camera.
       assert.equal(await page.locator('#panBtn,#zoomOut,#zoomIn,#zoomReset,#zoomLevel').count(),0,
-        'No on-screen pan or zoom controls');
-      const camera=await page.evaluate(()=>{
+        'No pan/zoom controls should exist');
+      const stationary=await page.evaluate(()=>{
         const board=document.querySelector('#factoryGrid');
-        const hud=['#shopToggle','.hotbar-wrap','#pageIndicator','#balance']
-          .map(sel=>document.querySelector(sel));
-        const rect=el=>{
-          const r=el.getBoundingClientRect();return [r.left,r.top,r.width,r.height];
+        const cell=board.querySelector('.grid-cell');
+        const rect=()=>{
+          const r=board.getBoundingClientRect();
+          return [r.left,r.top,r.width,r.height];
         };
-        const hudBefore=hud.map(rect);
-        const zoom=()=>Number(board.style.transform.match(/scale\(([^)]+)\)/)?.[1]||1);
+        const initial=rect();
+        const initialStyle=board.style.transform;
         const touch=(type,id,x,y)=>board.dispatchEvent(new PointerEvent(type,{
           bubbles:true,cancelable:true,pointerId:id,pointerType:'touch',
           button:0,clientX:x,clientY:y
         }));
-        const initial=rect(board),x=initial[0]+initial[2]*.38,y=initial[1]+initial[3]*.42;
-        touch('pointerdown',101,x,y);
-        touch('pointermove',101,x+2,y+2);
-        touch('pointerup',101,x+2,y+2);
-        const afterTap=rect(board);
-        const beforeZoom=zoom();
+        const x=initial[0]+initial[2]*.4,y=initial[1]+initial[3]*.4;
         board.dispatchEvent(new WheelEvent('wheel',{
-          bubbles:true,cancelable:true,deltaY:-180,clientX:x,clientY:y
+          bubbles:true,cancelable:true,deltaY:-240,clientX:x,clientY:y
         }));
-        const afterWheel=rect(board),wheelZoom=zoom();
-        const anchorError=Math.hypot(
-          (x-afterWheel[0])/wheelZoom-(x-initial[0])/beforeZoom,
-          (y-afterWheel[1])/wheelZoom-(y-initial[1])/beforeZoom
-        );
-        touch('pointerdown',102,x,y);
-        touch('pointermove',102,x+42,y+29);
-        touch('pointerup',102,x+42,y+29);
-        const afterPan=rect(board);
-        const cx=afterPan[0]+afterPan[2]*.5,cy=afterPan[1]+afterPan[3]*.5;
-        touch('pointerdown',103,cx-26,cy);
-        touch('pointerdown',104,cx+26,cy);
-        touch('pointermove',104,cx+62,cy);
-        const pinchZoom=zoom();
-        touch('pointerup',104,cx+62,cy);
-        touch('pointerup',103,cx-26,cy);
-        const hudAfter=hud.map(rect);
+        board.dispatchEvent(new WheelEvent('wheel',{
+          bubbles:true,cancelable:true,deltaY:240,clientX:x,clientY:y
+        }));
+        touch('pointerdown',101,x,y);
+        touch('pointermove',101,x+180,y+120);
+        touch('pointerup',101,x+180,y+120);
+        touch('pointerdown',102,x-30,y);
+        touch('pointerdown',103,x+30,y);
+        touch('pointermove',103,x+100,y);
+        touch('pointerup',103,x+100,y);
+        touch('pointerup',102,x-30,y);
+        // A drag should never be mistaken for a click to place a machine.
+        const cr=cell.getBoundingClientRect(),cx=cr.left+cr.width/2,cy=cr.top+cr.height/2;
+        cell.dispatchEvent(new PointerEvent('pointerdown',{
+          bubbles:true,pointerId:104,pointerType:'mouse',button:0,clientX:cx,clientY:cy
+        }));
+        cell.dispatchEvent(new PointerEvent('pointermove',{
+          bubbles:true,pointerId:104,pointerType:'mouse',button:0,clientX:cx+50,clientY:cy+50
+        }));
+        const draggedClick=new MouseEvent('click',{bubbles:true,cancelable:true,detail:1});
+        cell.dispatchEvent(draggedClick);
+        cell.dispatchEvent(new PointerEvent('pointerdown',{
+          bubbles:true,pointerId:105,pointerType:'mouse',button:0,clientX:cx,clientY:cy
+        }));
+        const tappedClick=new MouseEvent('click',{bubbles:true,cancelable:true,detail:1});
+        cell.dispatchEvent(tappedClick);
+        const after=rect();
         return {
-          tapStayed:Math.hypot(afterTap[0]-initial[0],afterTap[1]-initial[1])<1,
-          wheelZoomed:wheelZoom>beforeZoom,anchorError,
-          panX:afterPan[0]-afterWheel[0],panY:afterPan[1]-afterWheel[1],
-          pinchZoomed:pinchZoom>wheelZoom,
-          hudFixed:hudAfter.every((r,i)=>r.every((v,j)=>Math.abs(v-hudBefore[i][j])<1))
+          initialStyle,finalStyle:board.style.transform,
+          rectUnchanged:after.every((v,i)=>Math.abs(v-initial[i])<1),
+          dragClickSuppressed:draggedClick.defaultPrevented,
+          tapClickAllowed:!tappedClick.defaultPrevented
         };
       });
-      assert(camera.tapStayed,'A tap must not pan');
-      assert(camera.wheelZoomed,'Wheel must zoom');
-      assert(camera.anchorError<1,'Zoom must keep cursor anchored ('+camera.anchorError+')');
-      assert(Math.abs(camera.panX-42)<1&&Math.abs(camera.panY-29)<1,
-        'Drag must pan by the finger delta');
-      assert(camera.pinchZoomed,'Pinch must zoom');
-      assert(camera.hudFixed,'Zoom and pan must not move shop, inventory or status UI');
-      // Even a huge drag must not move the board fully out of reach.
-      const reachable=await page.evaluate(()=>{
-        const board=document.querySelector('#factoryGrid');
-        const r=board.getBoundingClientRect();
-        const x=r.left+50,y=r.top+50;
-        const touch=(type,px,py)=>board.dispatchEvent(new PointerEvent(type,{
-          bubbles:true,cancelable:true,pointerId:105,pointerType:'touch',
-          button:0,clientX:px,clientY:py
-        }));
-        const safeTop=Math.max(
-          document.querySelector('.topbar').getBoundingClientRect().bottom,
-          document.querySelector('#balance').getBoundingClientRect().bottom)+8;
-        const safeBottom=document.querySelector('.hotbar-wrap').getBoundingClientRect().top-34;
-        const visible=rect=>rect.right>48&&rect.left<window.innerWidth-48&&
-          rect.bottom>safeTop+48&&rect.top<safeBottom-48;
-        touch('pointerdown',x,y);
-        touch('pointermove',x+10000,y+10000);
-        const downRight=visible(board.getBoundingClientRect());
-        touch('pointermove',x-10000,y-10000);
-        const upLeft=visible(board.getBoundingClientRect());
-        touch('pointerup',x-10000,y-10000);
-        return downRight&&upLeft;
-      });
-      assert(reachable,'Large drags must not lose the board off-screen');
+      assert.equal(stationary.initialStyle,'','Factory must begin untransformed');
+      assert.equal(stationary.finalStyle,'','No gesture may transform the board');
+      assert(stationary.rectUnchanged,'Wheel, touch drag and pinch must not move or scale tiles');
+      assert(stationary.dragClickSuppressed,'Dragging must not accidentally place a machine');
+      assert(stationary.tapClickAllowed,'Normal tile clicks must keep working');
       await page.keyboard.press('0');
-      // WebKit normalises translate(0px, 0px) to translate(0px).
-      assert.match(await page.locator('#factoryGrid').getAttribute('style'),
-        /transform:\s*translate\(0px(?:,\s*0px)?\) scale\(1\)/,
-        '0 must reset the camera');
+      await page.keyboard.press('+');
+      await page.keyboard.press('-');
+      await page.evaluate(()=>{
+        document.dispatchEvent(new KeyboardEvent('keydown',{
+          bubbles:true,key:' ',code:'Space'
+        }));
+      });
+      assert.equal(await page.locator('#factoryGrid').evaluate(el=>el.style.transform),'',
+        'Former keyboard camera shortcuts must not move the board');
       if(profile.gamepad){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);

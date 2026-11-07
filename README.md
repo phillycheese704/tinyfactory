@@ -9,17 +9,14 @@ manage power, expand to more factory pages, and grow your production line.
 
 | Action | Mouse / keyboard | Touch | Controller |
 | --- | --- | --- | --- |
-| Place or select | Click a tile | Tap a tile | A |
-| Move the factory view | Drag the board, middle-drag, or hold Space and drag | Drag with one finger | D-pad / left stick follows the selection |
-| Zoom | Scroll wheel or `+` / `-` | Pinch with two fingers | Right stick |
-| Reset the view | `0` | — | R3 |
+| Place or select | Click a tile | Tap a tile | D-pad / left stick, then A |
 | Rotate / move / delete tools | `R` / `M` / `X` | Inventory bar | X to rotate |
 | Pause | `P` | Pause button | Start |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` | Action bar | — |
 
-The camera changes **only the factory board**. The shop, money display, inventory,
-page arrows, dialogs and action buttons stay in screen space. A tap still places
-machines; a drag starts panning only after a small movement threshold.
+The factory board automatically fits the available screen space. It does not
+pan or zoom with touch gestures, mouse wheel, keyboard or controller input.
+The shop, money display, inventory and page navigation remain fixed.
 
 For the full control reference, open **ⓘ Factory information** in the game.
 
@@ -42,7 +39,7 @@ node tests/machine-regression.cjs
 
 Browser smoke tests include desktop and phone Chromium, iPad WebKit (portrait
 and landscape), and controller input. They verify the main UI as well as
-gesture pan, cursor-anchored zoom, fixed HUD and keyboard view reset:
+a stationary board during wheel, touch, pinch and keyboard input:
 
 ```sh
 npm install --no-save playwright
