@@ -85,6 +85,7 @@ function runSuite(gameSource){
     };
     old.forEach(type=>{
       const card=get('buy'+type);
+      card.className='item';
       card.dataset.category=['Wire','Turbine','HydraulicPump'].includes(type)?'Power':
         ['Conveyor','Sorter','Splitter','ValueGate'].includes(type)?'Transport':'Processing';
       get('shopItems').appendChild(card);
@@ -126,7 +127,41 @@ function runSuite(gameSource){
   };
   verify('42 machine listings and Mighty price 2M',()=>{
     const a=boot();
-    return a.get('shopItems').children.length===42&&a.game.prices.MightyDropper===2000000n;
+    return a.get('shopItems').children.filter(x=>x.classList.contains('item')).length===42&&
+      a.game.prices.MightyDropper===2000000n;
+  });
+  verify('All shop has four labeled groups with cheapest-first prices',()=>{
+    const a=boot(),prices=a.game.prices,children=a.get('shopItems').children;
+    const categories=['Production','Processing','Transport','Power'];
+    let current=null,lastPrice=null,count=0;
+    const seen=[];
+    for(const child of children){
+      if(child.classList.contains('shop-section-heading')){
+        current=child.dataset.category;lastPrice=null;seen.push(current);
+        continue;
+      }
+      if(!child.classList.contains('item')||child.dataset.hidden==='true')continue;
+      if(child.dataset.category!==current)return false;
+      const price=prices[child.id.slice(3)];
+      if(lastPrice!==null&&price<lastPrice)return false;
+      lastPrice=price;count++;
+    }
+    return count===42&&JSON.stringify(seen)===JSON.stringify(categories);
+  });
+  verify('Shop category pages sort by current cost and regroup after purchase',()=>{
+    const a=boot(),prices=a.game.prices,tabs=a.document.querySelectorAll('.shop-tab');
+    const transport=tabs.find(x=>x.dataset.tab==='Transport');
+    transport.click();
+    const before=a.get('shopItems').children.filter(x=>x.classList.contains('item')&&x.dataset.hidden==='false');
+    if(before.length===0||before.some(x=>x.dataset.category!=='Transport'))return false;
+    if(before.some((x,i)=>i>0&&prices[before[i-1].id.slice(3)]>prices[x.id.slice(3)]))return false;
+    if(prices.Conveyor!==0n)return false;
+    a.get('buyConveyor').click();
+    if(prices.Conveyor!==50n)return false;
+    const after=a.get('shopItems').children.filter(x=>x.classList.contains('item')&&x.dataset.hidden==='false');
+    return after.every((x,i)=>x.dataset.category==='Transport'&&
+      (i===0||prices[after[i-1].id.slice(3)]<=prices[x.id.slice(3)]))&&
+      after.findIndex(x=>x.id==='buyConveyor')>0;
   });
   verify('10% scaling, no max, with fixed wires/logic',()=>{
     const g=boot().game;
