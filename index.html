@@ -489,6 +489,21 @@
     let nextBlobId = 1;
     let lastMovementAt = 0;
     const MOVE_MS = 250;
+    // Gameplay timestamps stop while paused; resuming never catches up old costs.
+    let pausedAt=null,pausedAccumulated=0;
+    function factoryNow(){return (pausedAt===null?performance.now():pausedAt)-pausedAccumulated;}
+    function setSimulationPaused(shouldPause){
+      if((pausedAt!==null)===shouldPause)return;
+      if(shouldPause)pausedAt=performance.now();
+      else{pausedAccumulated+=performance.now()-pausedAt;pausedAt=null;}
+      document.body.classList.toggle('simulation-paused',shouldPause);
+      $('pauseBtn').textContent=shouldPause?'▶':'⏸';
+      $('pauseBtn').setAttribute('aria-pressed',String(shouldPause));
+      $('pauseBtn').setAttribute('aria-label',shouldPause?'Resume simulation':'Pause simulation');
+      renderStats();
+      showToast(shouldPause?'Factory paused':'Factory resumed');
+    }
+    $('pauseBtn').addEventListener('click',()=>setSimulationPaused(pausedAt===null));
     const directions = [[-1,0],[0,1],[1,0],[0,-1]]; // up, right, down, left
     const toKey = (row, column) => `${row},${column}`;
     const coords = key => key.split(',').map(Number);
@@ -498,7 +513,7 @@
       return nextRow < 0 || nextCol < 0 || nextRow >= gridRows || nextCol >= gridCols ? null : toKey(nextRow,nextCol);
     }
     function machine(type, purchaseCost = 0n) {
-      const now = performance.now();
+      const now = factoryNow();
       return { type, purchaseCost, direction:1, enabled:true, shape:0, manuallyRotated:false, charges:[], lastClick:-10000, lastPower:now, lastUpkeep:now, poweredUntil:0, lastAuto:now, pulseUntil:0, wireUntil:0,
         batch:[],pending:[],batchRemaining:3000,batchLastAt:now,sortGrade:'diamond',sortDir:2,
         gateThreshold:50n,gateDir:2 };
@@ -541,6 +556,56 @@
     const MONEY_TREND_WINDOW_MS = 10000;
     let lastTrackedMoney = null;
     const moneyTransactions = [];
+    const stats={earned:0n,spent:0n,produced:0,sold:0,processed:0,best:0n,purchases:0,powerGenerated:0,playMs:0};
+    let lastStatsTick=0,lastStatsSavedAt=0,bottleneckVisible=false;
+    function loadStats(data){
+      for(const name of ['earned','spent','best'])stats[name]=parseMoney(data?.[name],0n);
+      for(const name of ['produced','sold','processed','purchases','powerGenerated','playMs']){
+        const n=Number(data?.[name]);
+        stats[name]=Number.isSafeInteger(n)&&n>=0?n:0;
+      }
+      lastStatsTick=factoryNow();
+      lastStatsSavedAt=lastStatsTick;
+    }
+    function persistStats(){
+      return {...stats,earned:String(stats.earned),spent:String(stats.spent),best:String(stats.best)};
+    }
+    function renderStats(){
+      const now=factoryNow();
+      while(moneyTransactions.length&&now-moneyTransactions[0].time>=MONEY_TREND_WINDOW_MS)
+        moneyTransactions.shift();
+      let plus=0n,minus=0n;
+      for(const t of moneyTransactions){
+        if(t.change>=0n)plus+=t.change;else minus-=t.change;
+      }
+      $('statIncome').textContent='+$'+formatAmount(plus)+'/10s';
+      $('statExpenses').textContent='−$'+formatAmount(minus)+'/10s';
+      $('statNet').textContent=(plus>=minus?'+':'−')+'$'+formatAmount(plus>=minus?plus-minus:minus-plus)+'/10s';
+      const generators=[...placed.values()].filter(obj=>(obj.type==='Turbine'||obj.type==='HydraulicPump')&&obj.enabled).length;
+      $('statPower').textContent=generators+' on / '+stats.powerGenerated+' total';
+      $('statLiveBlobs').textContent=String(blobs.size);
+      $('statMachines').textContent=String([...placed.values()].filter(obj=>!['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj.type)).length);
+      $('statEarned').textContent='$'+formatAmount(stats.earned);
+      $('statSpent').textContent='$'+formatAmount(stats.spent);
+      $('statBlobs').textContent=stats.sold+' / '+stats.produced;
+      $('statProcessed').textContent=String(stats.processed);
+      $('statBestBlob').textContent='$'+formatAmount(stats.best);
+      const mins=Math.floor(stats.playMs/60000);
+      $('statPlaytime').textContent=(mins>=60?Math.floor(mins/60)+'h '+mins%60+'m':mins+'m')+' / '+stats.purchases;
+    }
+    function setStatsOpen(open){
+      $('statsPanel').classList.toggle('open',open);
+      if(open){renderStats();$('closeStats').focus();}
+      else $('statsToggle').focus();
+    }
+    $('statsToggle').addEventListener('click',()=>setStatsOpen(true));
+    $('closeStats').addEventListener('click',()=>setStatsOpen(false));
+    $('statsPanel').addEventListener('click',event=>{if(event.target===$('statsPanel'))setStatsOpen(false);});
+    $('bottleneckToggle').addEventListener('change',event=>{
+      bottleneckVisible=event.target.checked;
+      markDirty();renderGrid();
+    });
+    setInterval(()=>{renderStats();if(bottleneckVisible)renderGrid();},1000);
     const initialPrices={Dropper:0n,Conveyor:0n,Extractor:0n,Turbine:50n,Wire:10n,Purifier:125n,Furnace:400n,CryoChamber:750n,LaserCutter:300n,AdvancedDropper:200n,Splitter:10n,Upgrader:500n,ParticleAccelerator:1000000000n,SuperDropper:5000n,Sorter:10n,Presser:450n,HydraulicPump:5000n,ValueGate:10n};
     const prices = {...initialPrices};
     let selected = null; // Inventory source, used while the backpack is open.
@@ -599,6 +664,7 @@
       try{
         const data={
           version:1,pricingVersion:2,money:String(money),
+          stats:persistStats(),bottleneckVisible,
           giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
           prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
           hotbar:inventory.hotbar,backpack:inventory.backpack,
@@ -633,6 +699,9 @@
         const data=JSON.parse(raw);
         if(data?.version!==1)return;
         money=parseMoney(data.money);
+        loadStats(data.stats);
+        bottleneckVisible=data.bottleneckVisible===true;
+        $('bottleneckToggle').checked=bottleneckVisible;
         giantBalance.clear();
         if(Array.isArray(data.giantBalance)){
           for(const entry of data.giantBalance.slice(0,16)){
@@ -710,7 +779,7 @@
             obj.batch=Array.isArray(entry[1].batch)?entry[1].batch.slice(0,5).map(reviveBlob):[];
             obj.pending=Array.isArray(entry[1].pending)?entry[1].pending.slice(0,20).map(reviveBlob):[];
             obj.batchRemaining=Math.max(0,Math.min(3000,Number(entry[1].batchRemaining??3000)));
-            obj.batchLastAt=performance.now();
+            obj.batchLastAt=factoryNow();
           }
           placed.set(entry[0],obj);
         }
@@ -719,7 +788,7 @@
           if(obj.type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
           if(obj.type==='HydraulicPump')placeHydraulicParts(key,obj);
         }
-        const now=performance.now();
+        const now=factoryNow();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
           if(!/^\d+,\d+$/.test(b?.key||'')||!placed.has(b.key))continue;
           const id=Number(b.id);
@@ -733,7 +802,8 @@
     function resetGame(){
       document.body.classList.remove('money-holding');
       document.body.classList.add('resetting');
-      money=0n;giantBalance.clear();clearMoneyTrend();placed.clear();blobs.clear();nextBlobId=1;lastMovementAt=performance.now();
+      money=0n;giantBalance.clear();clearMoneyTrend();placed.clear();
+      loadStats(null);bottleneckVisible=false;$('bottleneckToggle').checked=false;blobs.clear();nextBlobId=1;lastMovementAt=factoryNow();
       for(let i=0;i<HOTBAR_SIZE;i++){
         inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
       }
@@ -1368,7 +1438,7 @@
       moneyTransactions.length=0;
       lastTrackedMoney=money;
     }
-    function refreshMoneyTrend(now=performance.now()){
+    function refreshMoneyTrend(now=factoryNow()){
       while(moneyTransactions.length && now-moneyTransactions[0].time>=MONEY_TREND_WINDOW_MS)
         moneyTransactions.shift();
       let net=0n;
@@ -1385,7 +1455,7 @@
       $('balance').setAttribute('aria-label','Money: $'+formatBalance()+'; '+description.toLowerCase());
     }
     function updateMoney(){
-      const now=performance.now();
+      const now=factoryNow();
       if(lastTrackedMoney!==null && money!==lastTrackedMoney)
         moneyTransactions.push({time:now,change:money-lastTrackedMoney});
       lastTrackedMoney=money;
@@ -1443,7 +1513,12 @@
     }
     function renderGrid() {
       rebuildWireLayouts();
-      const now=performance.now();
+      const now=factoryNow();
+      const blocked=new Map();
+      if(bottleneckVisible)for(const blob of blobs.values()){
+        if(blob.blockedSince!==undefined && now-blob.blockedSince>=2000)
+          blocked.set(blob.key,Math.max(blocked.get(blob.key)||0,now-blob.blockedSince));
+      }
       $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
         const key=cellKey(index), obj=placed.get(key);
         const parentMachine=obj?.type==='HydraulicPart'?placed.get(obj.parent):null;
@@ -1463,6 +1538,8 @@
         }
         cell.classList.toggle('occupied',!!obj);
         cell.classList.toggle('move-source',moveFrom===key);
+        cell.classList.toggle('bottleneck-warn',bottleneckVisible&&(blocked.get(key)||0)>=2000&&(blocked.get(key)||0)<5000);
+        cell.classList.toggle('bottleneck-severe',bottleneckVisible&&(blocked.get(key)||0)>=5000);
         cell.classList.toggle('is-powered',powered);
         cell.setAttribute('aria-label',`Row ${Math.floor(index/gridCols)+1}, column ${index%gridCols+1}: ${obj?.type || 'empty'}${obj?.type==='Conveyor'?', facing '+['up','right','down','left'][obj.direction]:''}${obj?.type==='Wire'?', blue input '+['up','right','down','left'][ports?.inputDir??(obj.direction+2)%4]+', red output '+['up','right','down','left'][output]:''}${['Turbine','HydraulicPump','HydraulicPart'].includes(obj?.type)?', '+(isEnabled?'on':'off'):''}`);
         cell.title=obj?(moveActive?'Tap to '+(moveFrom?'move here':'pick up'):rotateActive?'Rotate 90°':obj.type==='Wire'?'Tap to cycle straight / 3-way / 4-way':['Turbine','HydraulicPump','HydraulicPart'].includes(obj.type)?'Tap to switch on/off':obj.type==='ValueGate'?'Value Gate: blobs above $'+formatAmount(obj.gateThreshold??50n)+' go '+['up','right','down','left'][obj.gateDir]+' (tap to configure)':obj.type):'Empty tile';
@@ -1558,7 +1635,7 @@
     });
     function useGridCell(index){
       if($('shopLayer').classList.contains('is-open')||$('backpackLayer').classList.contains('is-open'))return;
-      const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=performance.now();
+      const key=cellKey(index),root=rootKey(key),obj=placed.get(root),now=factoryNow();
       if(deleteActive){
         const removed=removeMachine(key);
         if(removed){
@@ -1635,7 +1712,7 @@
       if(!location) {showToast('Inventory full');return;}
       const price=prices[item];
       if(!canAfford(price)) {showToast('Not enough money');return;}
-      money-=price;
+      money-=price;stats.spent+=price;stats.purchases++;
       inventory[location.zone][location.index]=item;
       if(location.zone==='hotbar')inventoryCosts.hotbar[location.index].push(price);
       else inventoryCosts.backpack[location.index]=price;
@@ -1822,7 +1899,7 @@
       const gold=16.6666667*(1-t)+40*t;
       return pick<silver?'silver':pick<silver+gold?'gold':'diamond';
     }
-    function spawnBlob(key, now=performance.now()){
+    function spawnBlob(key, now=factoryNow()){
       const dropper=placed.get(key);
       if(!['Dropper','AdvancedDropper','SuperDropper'].includes(dropper?.type)||
         [...blobs.values()].some(b=>b.key===key))return false;
@@ -1832,6 +1909,7 @@
       const values={normal:1n,bronze:5n,silver:15n,gold:50n,diamond:100n};
       const colors={normal:'black',bronze:'bronze',silver:'silver',gold:'gold',diamond:'diamond'};
       const id=nextBlobId++;
+      stats.produced++;
       blobs.set(id,{id,key,worth:values[grade],shiny:false,ember:false,melted:false,plate:false,
         color:colors[grade],neon:false,grade,fromKey:null,state:'waiting',arrivedAt:now,collectAt:0});
       markDirty();renderBlobs();return true;
@@ -1971,12 +2049,20 @@
       let changed=false;
       for(const [id,blob] of blobs){
         if(blob.state==='collecting'){
-          if(now>=blob.collectAt){money+=blob.worth;updateMoney();blobs.delete(id);changed=true;}
+          if(now>=blob.collectAt){
+            money+=blob.worth;stats.earned+=blob.worth;stats.sold++;
+            if(blob.worth>stats.best)stats.best=blob.worth;
+            updateMoney();blobs.delete(id);changed=true;
+          }
           continue;
         }
         if(now-blob.arrivedAt<MOVE_MS-25)continue;
         const next=blobDestination(blob);
-        if(!next||occupied.has(next))continue;
+        if(!next||occupied.has(next)){
+          if(blob.blockedSince===undefined)blob.blockedSince=now;
+          continue;
+        }
+        blob.blockedSince=undefined;
         const nextMachine=placed.get(next);
         if(nextMachine?.type==='AcceleratorPart'){
           const root=placed.get(nextMachine.parent);
@@ -1992,6 +2078,8 @@
         occupied.delete(previous);occupied.add(next);
         blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
+        if(processorTypes.has(reached?.type)||['LaserCutter','LaserPart','AcceleratorPart','ParticleAccelerator'].includes(reached?.type))
+          stats.processed++;
         if(reached?.type==='Upgrader'){
           upgradeBlob(blob);
           reached.pulseUntil=now+350;
@@ -2039,7 +2127,7 @@
     }
     // Turbines emit one short-lived charge. Separate pulses accumulate up to
     // 100 per machine; each charge expires three seconds after being produced.
-    function powerLevel(obj,now=performance.now()){
+    function powerLevel(obj,now=factoryNow()){
       return Math.min(100,obj?.charges?.filter(t=>t>now).length||0);
     }
     // Deliver a source pulse through aligned blue-input/red-output wires.
@@ -2149,7 +2237,13 @@
       return delivered;
     }
     function tickFactory(){
-      const now=performance.now();let mustRender=false;
+      if(pausedAt!==null)return;
+      const now=factoryNow();let mustRender=false;
+      if(lastStatsTick){
+        stats.playMs+=Math.max(0,Math.min(60000,now-lastStatsTick));
+        if(now-lastStatsSavedAt>=1000){lastStatsSavedAt=now;markDirty();}
+      }
+      lastStatsTick=now;
       // Clear output tiles before attempting new drops at the maximum rate.
       if(now-lastMovementAt>=MOVE_MS){lastMovementAt=now;moveBlobs(now);}
       for(const [key,obj] of placed){
@@ -2159,7 +2253,7 @@
             obj.pulseUntil=now+350;
             deliverPower(key,now,15);
             // Each 15-power generation burst has a $50 running cost.
-            money-=50n;
+            money-=50n;stats.spent+=50n;stats.powerGenerated+=15;
             updateMoney();
             markDirty();
             mustRender=true;
@@ -2169,12 +2263,13 @@
           if(now-obj.lastPower>=2500){
             obj.lastPower+=Math.floor((now-obj.lastPower)/2500)*2500;
             obj.pulseUntil=now+260;
-            deliverPower(key,now);mustRender=true;
+            deliverPower(key,now);stats.powerGenerated++;mustRender=true;
           }
           if(now-obj.lastUpkeep>=10000){
             const cycles=Math.floor((now-obj.lastUpkeep)/10000);
             obj.lastUpkeep+=cycles*10000;
-            money-=BigInt(cycles)*5n;updateMoney();markDirty();
+            money-=BigInt(cycles)*5n;stats.spent+=BigInt(cycles)*5n;
+            updateMoney();markDirty();
           }
         }
         if(obj.charges?.length){
