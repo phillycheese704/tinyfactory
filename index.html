@@ -535,10 +535,10 @@
         giantBalance.clear();
         if(Array.isArray(data.giantBalance)){
           for(const entry of data.giantBalance.slice(0,16)){
-            if(!Array.isArray(entry)||!/^\\d{1,110}$/.test(String(entry[0]))||
-               !/^\\d{1,40}$/.test(String(entry[1])))continue;
+            if(!Array.isArray(entry)||!/^\d{1,110}$/.test(String(entry[0]))||
+               !/^\d{1,40}$/.test(String(entry[1])))continue;
             const exponent=BigInt(entry[0]),coefficient=BigInt(entry[1]);
-            if(exponent>=1000n&&coefficient>0n)creditGiant(coefficient,exponent);
+            if(exponent>300n&&coefficient>0n)creditGiant(coefficient,exponent);
           }
         }
         // Retain existing machines, stacks, costs and shop price on rename.
