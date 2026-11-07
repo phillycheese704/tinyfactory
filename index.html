@@ -242,6 +242,8 @@
     .shop-info-art svg{width:90px;height:80px}
     .shop-info-text{font:750 14px/1.55 sans-serif;white-space:pre-line}
     .dialog-primary{border:2px solid #292929;background:#ffe28b;border-radius:9px;padding:10px;font-weight:850;cursor:pointer}
+    @keyframes place-pop{0%{filter:brightness(1.25);transform:scale(.88)}75%{filter:brightness(1);transform:scale(1.045)}100%{transform:scale(1)}}
+    .grid-cell.just-placed .machine-icon{animation:place-pop .22s ease-out}
     .grid-cell.preview-valid::before,.grid-cell.preview-blocked::before{content:'';position:absolute;inset:1px;z-index:7;pointer-events:none;border:2px solid #25ab66;background:#29cf6040;border-radius:4px}
     .grid-cell.preview-blocked::before{border-color:#d33d45;background:#ed3b3b55}
     .grid-cell.bottleneck-warn{box-shadow:inset 0 0 0 3px #e9a323!important}
@@ -957,7 +959,7 @@
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitFactoryGrid).observe(document.querySelector('.hotbar-wrap'));
 
     // Individual illustrated SVGs keep the animations working in iPad Safari.
-    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0) {
+    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0, autoWireDirs = null) {
       if (!type) return '';
       const stroke = 'stroke="#292929" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"';
       const frame = (inside, classes='') => `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${inside}</svg>`;
@@ -1086,6 +1088,23 @@
         <path d="M7 28h25m0 0 19-14m-19 14 19 14" stroke="#6779bb" stroke-width="6" fill="none" stroke-linecap="round"/>
         <path d="m26 23 6 5-6 5m19-23 6 4-7 4m0 18 7 6-7 4" fill="none" stroke="#3b4e96" stroke-width="2"/>
         <circle class="splitter-led" cx="32" cy="28" r="5" fill="#ffe287"/></g>`);
+      if(type==='Wire'&&Array.isArray(autoWireDirs)){
+        // New wires draw all physical neighbour connections, even junctions,
+        // without requiring players to rotate a blue/red socket by hand.
+        const dirs=autoWireDirs;
+        const edge=d=>[[32,0],[64,28],[32,56],[0,28]][d];
+        const paths=dirs.map(d=>{
+          const p=edge(d);return 'M32 28 L'+p[0]+' '+p[1];
+        }).join(' ');
+        const sockets=dirs.map(d=>
+          '<circle cx="'+edge(d)[0]+'" cy="'+edge(d)[1]+'" r="6" fill="#f7e1a9" stroke="#716454" stroke-width="2"/>').join('');
+        return frame(`<rect x="9" y="10" width="46" height="36" rx="10" fill="#fff4cf" stroke="#68582e" stroke-width="2"/>
+          <path d="${paths}" stroke="#71675a" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <path d="${paths}" stroke="#ead99b" stroke-width="7" stroke-linecap="round" fill="none"/>
+          <path class="wire-energy" d="${paths}" stroke="#ffdc59" stroke-width="4" stroke-dasharray="5 8" fill="none"/>
+          ${sockets}<circle cx="32" cy="28" r="8" fill="#ffdd77" stroke="#7c672c" stroke-width="2"/>
+          <path d="M34 17l-8 13h7l-4 11 13-18h-8z" fill="#fff8d0" stroke="#916f27" stroke-width="1.4"/>`,powered?'powered':'');
+      }
       if (type === 'Wire' && shape > 0) {
         const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4];
         const input=incoming==null?(direction+2)%4:incoming;
@@ -1590,6 +1609,44 @@
 
     // A responsive number of real buttons gives iPad touch targets and keyboard
     // placement even in landscape. Saved tile positions use row/column keys.
+    let lastPreviewIndex=null;
+    function clearPlacementPreview(){
+      lastPreviewIndex=null;
+      $('factoryGrid').querySelectorAll('.preview-valid,.preview-blocked').forEach(cell=>{
+        cell.classList.remove('preview-valid','preview-blocked');
+      });
+    }
+    function footprintKeys(key,type){
+      return type==='LaserCutter'?laserKeys(key,1):
+        type==='ParticleAccelerator'?acceleratorKeys(key):
+        type==='HydraulicPump'?hydraulicKeys(key,1):[key];
+    }
+    function showPlacementPreview(index,typeOverride=null){
+      const type=typeOverride??(selectedHotbar!==null?inventory.hotbar[selectedHotbar]:null);
+      if(!type||panMode){clearPlacementPreview();return;}
+      const valid=canOccupy(cellKey(index),type,1);
+      clearPlacementPreview();
+      lastPreviewIndex=index;
+      const css=valid?'preview-valid':'preview-blocked';
+      for(const key of footprintKeys(cellKey(index),type)){
+        if(!key)continue;
+        const [r,c]=coords(key),node=$('factoryGrid').children[r*gridCols+c];
+        if(node?.classList.contains('grid-cell'))node.classList.add(css);
+      }
+    }
+    function suggestConveyorDirection(key){
+      const feeds=[],outputs=[];
+      for(let dir=0;dir<4;dir++){
+        const near=neighbor(key,dir),obj=near&&placed.get(near),towards=(dir+2)%4;
+        if(!obj)continue;
+        if(beltFeeds(near,key)||['Dropper','AdvancedDropper','SuperDropper'].includes(obj.type)&&obj.direction===towards)
+          feeds.push(towards);
+        if(canFeedConveyor(key,near,dir))outputs.push(dir);
+      }
+      for(const output of outputs)if(!feeds.includes((output+2)%4)&&!feeds.includes(output))
+        return output;
+      return feeds[0]??outputs[0]??1;
+    }
     function buildGrid() {
       const fragment = document.createDocumentFragment();
       for (let index = 0; index < gridCols * gridRows; index++) {
@@ -1600,7 +1657,15 @@
         if (Math.floor(index/gridCols) === gridRows-1) cell.classList.add('end-row');
         cell.dataset.cell = index;
         cell.tabIndex = selectedHotbar !== null || deleteActive ? 0 : -1;
-        cell.addEventListener('click', () => useGridCell(index));
+        cell.addEventListener('click', () => {
+          if(!suppressGridClick)useGridCell(index);
+        });
+        cell.addEventListener('pointerenter',()=>{
+          if(!dragging?.active&&selectedHotbar!==null)showPlacementPreview(index);
+        });
+        cell.addEventListener('pointerleave',()=>{
+          if(!dragging?.active)clearPlacementPreview();
+        });
         fragment.appendChild(cell);
       }
       // Overlay must be inside the same sized board so moving blobs stay aligned.
@@ -1609,6 +1674,15 @@
       fragment.appendChild(overlay);
       $('factoryGrid').replaceChildren(fragment);
       renderGrid();renderBlobs();
+    }
+    function wireConnections(key){
+      const connected=[];
+      for(let dir=0;dir<4;dir++){
+        const near=neighbor(key,dir),type=near&&placed.get(near)?.type;
+        if(type==='Wire'||canGeneratePower.has(type)||canReceivePower.has(type))
+          connected.push(dir);
+      }
+      return connected;
     }
     function renderGrid() {
       rebuildWireLayouts();
@@ -1627,12 +1701,13 @@
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
         const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
+        const autoWireDirs=obj?.type==='Wire'&&!obj.manuallyRotated?wireConnections(key):null;
         const root=rootKey(key),acc=placed.get(root);
         const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):
           obj?.type==='ValueGate'?'>'+formatAmount(obj.gateThreshold??50n):'';
-        const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
+        const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape,autoWireDirs)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
@@ -1660,6 +1735,7 @@
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
       const obj=machine(type,cost);
+      if(type==='Conveyor')obj.direction=suggestConveyorDirection(key);
       if(logicTypes.has(type)){
         obj.underConveyor=placed.get(key);
         obj.direction=obj.underConveyor.direction;
@@ -1677,6 +1753,12 @@
       deleteActive=false;rotateActive=false;
       markDirty();
       renderGrid();renderInventory();
+      const keys=footprintKeys(key,type);
+      for(const pos of keys){
+        if(!pos)continue;
+        const [r,c]=coords(pos),cell=$('factoryGrid').children[r*gridCols+c];
+        if(cell){cell.classList.add('just-placed');setTimeout(()=>cell.classList.remove('just-placed'),240);}
+      }
     }
     let editingSorter=null;
     function openSorter(key){
@@ -1809,6 +1891,7 @@
       $('moveToggle').innerHTML='<svg viewBox="0 0 64 64" fill="none" stroke="#427f4a" stroke-width="4" stroke-linecap="round"><path d="M32 7v50M7 32h50m-25-25-7 8m7-8 7 8m-7 42-7-8m7 8 7-8M7 32l8-7m-8 7 8 7m42-7-8-7m8 7-8 7"/></svg>'+(moveActive?'<span class="tool-label">Move</span>':'');
       $('rotateToggle').innerHTML=`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M48 19a23 23 0 1 0 4 18" fill="none" stroke="#286399" stroke-width="5" stroke-linecap="round"/><path d="M46 7v16H30" fill="none" stroke="#286399" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg>${rotateActive?'<span class="tool-label">Rotate</span>':''}`;
       const placing = selectedHotbar !== null && !!inventory.hotbar[selectedHotbar];
+      if(!placing)clearPlacementPreview();
       document.body.classList.toggle('has-place-tool', placing);
       document.body.classList.toggle('delete-active', deleteActive);
       document.body.classList.toggle('move-active',moveActive);
@@ -2008,6 +2091,7 @@
     }
     function clearDragStyles() {
       document.body.classList.remove('dragging-to-grid');
+      clearPlacementPreview();
       document.querySelectorAll('.drag-over, .drag-origin, .place-over').forEach(el => el.classList.remove('drag-over', 'drag-origin', 'place-over'));
       document.querySelector('.drag-ghost')?.remove();
     }
@@ -2037,11 +2121,16 @@
       const ghost = document.querySelector('.drag-ghost');
       if (ghost) { ghost.style.left = event.clientX + 'px'; ghost.style.top = event.clientY + 'px'; }
       document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      clearPlacementPreview();
       const target = locationAt(event.clientX, event.clientY);
       if (target && !sameLocation(dragging.from, target)) target.node.classList.add('drag-over');
       else if (dragging.from.zone === 'hotbar') {
         const cellIndex = gridAt(event.clientX, event.clientY);
-        if (cellIndex !== null && canOccupy(cellKey(cellIndex),dragging.item,1)) $('factoryGrid').children[cellIndex].classList.add('place-over');
+        if (cellIndex !== null){
+          showPlacementPreview(cellIndex,dragging.item);
+          if(canOccupy(cellKey(cellIndex),dragging.item,1))
+            $('factoryGrid').children[cellIndex].classList.add('place-over');
+        }
       }
     }
     function pointerEnded(event) {
@@ -2319,7 +2408,7 @@
     // energizing a wire does not consume one of those units.
     function deliverHydraulicPower(sourceRoot,now,amount){
       const source=placed.get(sourceRoot);
-      if(source?.type!=='HydraulicPump')return 0;
+      if(!['HydraulicPump','Turbine'].includes(source?.type))return 0;
       const queue=[],visited=new Set(),receivers=new Map();
       for(const from of machineKeys(sourceRoot,source)){
         if(!from)continue;
@@ -2363,7 +2452,8 @@
       rebuildWireLayouts();
       const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
       if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
-      if(source.type==='HydraulicPump')return deliverHydraulicPower(sourceRoot,now,amount);
+      if(source.type==='HydraulicPump'||source.type==='Turbine')
+        return deliverHydraulicPower(sourceRoot,now,amount);
       const queue=[],visited=new Set(),targets=new Map();
       // Large generators expose power sockets from every outer tile.
       for(const from of machineKeys(sourceRoot,source)){
