@@ -297,6 +297,87 @@ function runSuite(gameSource){
     a.get('resetConfirmText').value='RESET';a.get('confirmReset').click();
     return g.money()===0n&&g.factoryPages.length===1;
   });
+
+  verify('Inactive factory pages continue earning while another page is displayed',()=>{
+    const a=boot(),g=a.game;
+    put(g,'5,5','MightyDropper');put(g,'5,6','Extractor');
+    a.window.tinyFactoryTesting.setBalance('1Qa');
+    a.get('nextPage').click();a.get('confirmPageUnlock').click();
+    for(let n=1050;n<5500;n+=50){a.clock(n);g.tickFactory();}
+    return g.page()===1&&g.stats.sold>=1&&!g.placed().has('5,5');
+  });
+  verify('Legacy version-1 single-page save can still load',()=>{
+    const store=new Map();
+    store.set('tiny-factory-save-v1',JSON.stringify({version:1,money:'1234',
+      placed:[['8,8',{type:'Conveyor',direction:1,purchaseCost:'0'}]],
+      prices:{Wire:'10'},hotbar:[],backpack:[],blobs:[]}));
+    const g=boot({storageMap:store}).game;
+    return g.money()===1234n&&g.placed().get('8,8')?.type==='Conveyor';
+  });
+  verify('Queued cloned products survive save and reload',()=>{
+    const store=new Map(),a=boot({storageMap:store}),g=a.game;
+    const m=put(g,'4,4','Cloner'),port=g.megaPorts('4,4',m);
+    g.handleBlobArrival(g.newBlob('diamond',port.entry),port.entry,1000);
+    a.window.tinyFactoryTesting.addMoney('1000');g.saveState();
+    return boot({storageMap:store}).game.placed().get('4,4')?.pending?.[0]?.worth===50n;
+  });
+  verify('D-pad navigation and Start pause button work on gamepad',()=>{
+    const a=boot(),g=a.game,buttons=Array.from({length:17},()=>({pressed:false,value:0}));
+    a.gamepads([{connected:true,buttons,axes:[0,0,0,0]}]);g.pollGamepads();
+    if(a.get('factoryGrid').querySelectorAll('.controller-cursor').length!==1)return false;
+    a.clock(1250);buttons[12].pressed=true;g.pollGamepads();
+    buttons[12].pressed=false;g.pollGamepads();
+    buttons[9].pressed=true;g.pollGamepads();
+    return a.get('pauseBtn').attrs['aria-pressed']==='true';
+  });
+  verify('Gamepad Y opens the shop',()=>{
+    const a=boot(),g=a.game,buttons=Array.from({length:17},()=>({pressed:false,value:0}));
+    a.gamepads([{connected:true,buttons,axes:[0,0,0,0]}]);g.pollGamepads();
+    buttons[3].pressed=true;g.pollGamepads();
+    return a.get('shopLayer').classList.contains('is-open');
+  });
+  verify('Solar Field emits through at most two independent wires',()=>{
+    const g=boot().game;put(g,'4,4','SolarField');
+    for(const c of [4,6,8]){put(g,'3,'+c,'Wire');put(g,'2,'+c,'Dropper');}
+    g.deliverPower('4,4',1000,15);
+    return [4,6,8].map(c=>g.placed().get('2,'+c).charges.length).filter(v=>v>0).length===2;
+  });
+  verify('Undo history cannot corrupt another page',()=>{
+    const a=boot(),g=a.game;a.window.tinyFactoryTesting.setBalance('1Qa');
+    g.purchase('Wire');if(!g.undoStack.length)return false;
+    a.get('nextPage').click();a.get('confirmPageUnlock').click();
+    return g.page()===1&&g.undoStack.length===0;
+  });
+  verify('Googolplex testing wallet survives machine purchases',()=>{
+    const a=boot(),g=a.game;a.window.tinyFactoryTesting.setBalance('googolplex');
+    g.purchase('MightyDropper');
+    return g.formatBalance()==='1Gpx'&&g.money()===-2000000n;
+  });
+  verify('Dimensional Rift collects 6x6 region on successful roll',()=>{
+    const g=boot().game;put(g,'7,7','DimensionalRift');
+    const a=g.newBlob('gold','7,7'),b=g.newBlob('diamond','4,4');
+    g.blobs().set(a.id,a);g.blobs().set(b.id,b);
+    const random=Math.random;Math.random=()=>0;
+    try{g.handleBlobArrival(a,'7,7',1000);
+      return b.state==='collecting'&&b.worth===10000n;
+    }finally{Math.random=random;}
+  });
+  verify('Counter Gate diverts third item, Overflow Drain avoids blockage',()=>{
+    const g=boot().game,m=put(g,'6,6','CounterGate');
+    put(g,'6,7','Conveyor');put(g,'7,6','Conveyor');
+    m.counter=3;m.counterN=3;m.branchDir=2;
+    if(g.blobDestination(g.newBlob('gold','6,6'))!=='7,6')return false;
+    m.type='OverflowDrain';
+    const blocked=g.newBlob('gold','6,7'),item=g.newBlob('gold','6,6');
+    g.blobs().set(blocked.id,blocked);g.blobs().set(item.id,item);
+    return g.blobDestination(item)==='7,6';
+  });
+  verify('Timer Gate chooses alternate path after configured period',()=>{
+    const a=boot(),g=a.game,m=put(g,'6,6','TimerGate');
+    put(g,'6,7','Conveyor');put(g,'7,6','Conveyor');
+    m.branchDir=2;m.timerSeconds=1;a.clock(1500);
+    return g.blobDestination(g.newBlob('gold','6,6'))==='7,6';
+  });
   return{total:checks.length,passed:checks.filter(c=>c.pass).length,
     failures:checks.filter(c=>!c.pass),checks};
 }
