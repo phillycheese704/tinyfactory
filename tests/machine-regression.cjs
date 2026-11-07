@@ -112,8 +112,8 @@ function runSuite(gameSource){
       'placed:()=>placed,blobs:()=>blobs,factoryPages,page:()=>currentPage,stats,money:()=>money,'+
       'allDroppers,megaKeys,megaPorts,placeMegaParts,canOccupy,rootKey,rotateMachine,'+
       'newBlob,chooseDropGrade,upgradeBlob,multiplyBlob,handleBlobArrival,moveBlobs,movementDelay,'+
-      'deliverPower,tickFactory,spawnBlob,purchase,travelHistory,saveState,switchFactoryPage,'+
-      'pagePurchasePrice,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame};';
+      'deliverPower,tickFactory,spawnBlob,purchase,travelHistory,undoStack,saveState,switchFactoryPage,'+
+      'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame};';
     const game=new Function('document','window','navigator','location','localStorage',
       'performance','ResizeObserver','setInterval','setTimeout','clearTimeout',source)(
       document,window,navigator,{protocol:'file:'},storage,performance,undefined,()=>0,()=>1,()=>{});
