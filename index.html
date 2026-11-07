@@ -1411,11 +1411,28 @@
     const VIEW_DRAG_THRESHOLD=6;
     let viewZoom=1,panX=0,panY=0,spaceHeld=false;
     let suppressGridClick=false,dragPointer=null,pinchStart=null;
+    let viewBounds={left:0,right:window.innerWidth,top:0,bottom:window.innerHeight};
 
     function clampViewZoom(value){
       return Math.max(.7,Math.min(2.6,Math.round(value*100)/100));
     }
+    function keepBoardReachable(){
+      // Without on-screen camera buttons, touch users must never lose
+      // the entire board outside the interactive area.
+      const width=parseFloat(factoryBoard.style.width)*viewZoom;
+      const height=parseFloat(factoryBoard.style.height)*viewZoom;
+      if(!(width>0&&height>0))return;
+      const left=parseFloat(factoryBoard.style.left)||0;
+      const top=parseFloat(factoryBoard.style.top)||0;
+      const visibleX=Math.min(80,width*.35);
+      const visibleY=Math.min(80,height*.35);
+      panX=Math.max(viewBounds.left+visibleX-left-width,
+        Math.min(viewBounds.right-visibleX-left,panX));
+      panY=Math.max(viewBounds.top+visibleY-top-height,
+        Math.min(viewBounds.bottom-visibleY-top,panY));
+    }
     function updateViewport(){
+      keepBoardReachable();
       factoryBoard.style.transform=`translate(${panX}px, ${panY}px) scale(${viewZoom})`;
     }
     function zoomAt(target,clientX,clientY){
@@ -1535,6 +1552,7 @@
       const viewportBottom = window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
       const top = Math.max(header.bottom, balance.bottom) + 8;
       const bottom = Math.min(viewportBottom, hotbar.top - 34);
+      viewBounds={left:0,right:Math.min(viewportWidth,window.innerWidth),top,bottom};
       const usableWidth = Math.max(0, Math.min(viewportWidth, window.innerWidth) - 16);
       const usableHeight = Math.max(0, bottom - top);
       // Start with at least 16 tiles along the shorter usable dimension, then
