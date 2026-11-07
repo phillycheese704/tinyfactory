@@ -1390,15 +1390,39 @@
         const category=newMachineCategories.Production.includes(type)?'dropper':
           newMachineCategories.Power.includes(type)?'power':
           newMachineCategories.Transport.includes(type)?'transport':'processor';
-        const tint=category==='dropper'?'#efdeff':category==='power'?'#fff0b9':
-          category==='transport'?'#c9f5e0':'#cce9ff';
-        const glyph=category==='dropper'?'⬇':category==='power'?'⚡':
-          category==='transport'?'➜':'✦';
-        return frame(`<rect x="5" y="5" width="54" height="46" rx="11" fill="${tint}" stroke="#323b46" stroke-width="2.6"/>
-          <path d="M0 27h64" stroke="#647d9c" stroke-width="6"/>
-          <circle cx="32" cy="27" r="17" fill="#fff" stroke="#434d69" stroke-width="2.4"/>
-          <text x="32" y="34" font-size="22" text-anchor="middle" font-family="sans-serif" font-weight="900" fill="#3d4673">${glyph}</text>
-          <circle cx="13" cy="13" r="3" fill="#fff"/><circle cx="51" cy="41" r="3" fill="#fff"/>`);
+        const arts={
+          FusionChamber:['FUS','#fc9675'],Quantumifyier:['Q×5','#829aff'],
+          Cloner:['×2','#82d4ff'],Infinifyer:['∞','#b68eff'],
+          Cleaner:['CL','#79c9a3'],QuantumComputer:['QPC','#8c90f2'],
+          MightyDropper:['G','#edc35e'],RainbowDropper:['RGB','#d88def'],
+          TurboDropper:['>>','#e47d55'],QuantumDropper:['Q','#7b85e6'],
+          InfiDropper:['INF','#a38dee'],FusionReactor:['FR','#e6a757'],
+          SolarField:['SOL','#f0cf57'],Recycler:['RC','#8abb77'],
+          DysonSphere:['DS','#dfba53'],AdvancedConveyor:['1.5','#85c7ad'],
+          HyperConveyor:['4×','#64dfbb'],WireLift:['WL','#8ab7c6'],
+          CounterGate:['N','#cbaf6d'],OverflowDrain:['OV','#83d1c7'],
+          TimerGate:['T','#add38a'],Supercharger:['5×','#db8eeb'],
+          Singularity:['SG','#ac86de'],DimensionalRift:['RIFT','#b387f0']
+        };
+        const [letters,accent]=arts[type];
+        const tint=category==='dropper'?'#f6eaff':category==='power'?'#ffefbe':
+          category==='transport'?'#dcf9e7':'#dceaff';
+        const piping=category==='dropper'?
+          '<path d="M24 4v12h16V4M27 43l5 9 5-9" stroke="#5d5472" fill="none" stroke-width="3"/>':
+          category==='power'?
+          '<path d="M30 6l-9 20h10l-4 22 17-26H33l6-16" fill="#f8c84f" stroke="#755b32" stroke-width="2"/>':
+          category==='transport'?
+          '<path d="M0 28h17m30 0h17" stroke="#477d65" stroke-width="7"/>':
+          '<path d="M0 28h14m36 0h14M32 3v10M32 43v10" stroke="#57769c" stroke-width="6"/>';
+        const fontSize=letters.length>=4?10:letters.length>=3?13:letters.length===2?17:24;
+        return frame(`<rect x="4" y="5" width="56" height="46" rx="11" fill="${tint}" stroke="#343945" stroke-width="2.8"/>
+          <rect x="10" y="10" width="44" height="36" rx="9" fill="#fff9f0" stroke="${accent}" stroke-width="2.4"/>
+          ${piping}
+          <circle cx="32" cy="28" r="18" fill="${accent}" stroke="#343945" stroke-width="2.5"/>
+          <circle cx="32" cy="28" r="13" fill="#ffffff" opacity=".48"/>
+          <text x="32" y="33" font-size="${fontSize}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" fill="#283445">${letters}</text>
+          <circle cx="12" cy="13" r="2.5" fill="#fff"/><circle cx="52" cy="43" r="2.5" fill="#fff"/>`,
+          (powered?'powered ':'')+(pulsing?'is-pulsing':''));
       }
       if(type==='MegaPart')return frame(`<rect x="3" y="4" width="58" height="49" rx="7" fill="#bfddea" stroke="#45637b" stroke-width="3"/>
         <path d="M5 16h54M5 41h54M18 4v49M46 4v49" stroke="#7ea4c2" stroke-width="2.4"/>
