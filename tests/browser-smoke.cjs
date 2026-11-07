@@ -94,7 +94,7 @@ async function run(){
       assert.equal(allShop.count,42,'All view must show 42 cards');
       assert(allShop.grouped&&allShop.sorted,'All view must group machines cheapest-first');
       assert.deepEqual(allShop.categories,['Production','Processing','Transport','Power']);
-      assert(allShop.labels.every(label=>/\\d+ machines/.test(label)),'Category headers need counts');
+      assert(allShop.labels.every(label=>/\d+ machines/.test(label)),'Category headers need counts');
       await page.locator('#shopSearch').fill('Mighty');
       const searched=await page.locator('#shopItems .shop-section-heading')
         .evaluateAll(headers=>headers.map(h=>h.dataset.category));
@@ -123,7 +123,7 @@ async function run(){
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
       await page.screenshot({path:path.join(screenshotDir,
-        profile.name.replace(/\\W+/g,'-')+'-shop-all-grouped.png')});
+        profile.name.replace(/\W+/g,'-')+'-shop-all-grouped.png')});
       // All category tabs must be price-ordered, not merely the All tab.
       const tabOrder=await page.evaluate(()=>{
         const result={};
