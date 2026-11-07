@@ -421,6 +421,18 @@
     .machine-icon.off .model-rotor,.machine-icon.off .model-rotor-reverse,
     .machine-icon.off .model-piston,.machine-icon.off .model-portal,
     .machine-icon.off .model-flow,.machine-icon.off .model-arc{animation-play-state:paused;opacity:.48}
+    .grid-cell.machine-active-pulse:not(.bottleneck-severe){
+      box-shadow:inset 0 0 0 2px #ffefb2,0 0 8px 2px #ffd57966;
+    }
+    .grid-cell.machine-active-pulse .machine-icon{
+      filter:drop-shadow(0 0 4px #ffdc84) brightness(1.1);
+    }
+    .grid-cell.machine-active-pulse .machine-icon .model-energy{
+      opacity:1;filter:brightness(1.25);
+    }
+    body[data-graphics-quality="minimal"] .grid-cell.machine-active-pulse{
+      box-shadow:inset 0 0 0 1px #c0c7c6;
+    }
     .machine-icon .model-arc:not(.powered){opacity:.5}
     .layer:not(.is-open) .machine-icon *, .backpack-layer:not(.is-open) .machine-icon *{
       animation-play-state:paused!important;
@@ -2465,6 +2477,20 @@ function renderMachineFrame(type,inside,classes=''){
       }
       return connected;
     }
+    let lastVisualActivityAt=0;
+    function refreshMachineActivity(now){
+      if(!renderCurrentPage||now-lastVisualActivityAt<150)return;
+      lastVisualActivityAt=now;
+      const cells=$('factoryGrid').children;
+      for(const [key,obj] of placed){
+        const root=obj.type==='MegaPart'?placed.get(obj.parent):obj;
+        const active=(root?.pulseUntil??0)>now;
+        const [row,col]=coords(key);
+        const cell=cells[row*gridCols+col];
+        if(cell?.classList?.contains('machine-active-pulse')!==active)
+          cell?.classList?.toggle('machine-active-pulse',active);
+      }
+    }
     function renderGrid() {
       if(!renderCurrentPage)return;
       rebuildWireLayouts();
@@ -2479,6 +2505,7 @@ function renderMachineFrame(type,inside,classes=''){
         const parentMachine=['HydraulicPart','MegaPart'].includes(obj?.type)?placed.get(obj.parent):null;
         const isEnabled=parentMachine?parentMachine.enabled:obj?.enabled;
         const powerCount=obj?.charges?.filter(exp=>exp>now).length||0;
+        const pulsing=(obj?.pulseUntil??parentMachine?.pulseUntil??0)>now;
         const powered=!!obj && (powerCount>0 || obj.poweredUntil>now || obj.wireUntil>now);
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
@@ -2490,9 +2517,9 @@ function renderMachineFrame(type,inside,classes=''){
           obj?.type==='CounterGate'?'1/'+(obj.counterN||3):
           obj?.type==='TimerGate'?(obj.timerSeconds||3)+'s':
           obj?.type==='Splitter'?(obj.branchChance??50)+'%':'';
-        const signature=obj ? [obj.type,obj.kind,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
+        const signature=obj ? [obj.type,obj.kind,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,pulsing,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape,autoWireDirs,
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,pulsing,obj.shape,autoWireDirs,
             obj.kind??null, (Math.floor(index/gridCols)+index%gridCols)%2)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
           cell.dataset.signature=signature;
         }
@@ -3721,6 +3748,7 @@ function renderMachineFrame(type,inside,classes=''){
         placed=factoryPages[displayed].placed;
         blobs=factoryPages[displayed].blobs;
         renderCurrentPage=true;
+        refreshMachineActivity(now);
       }
     }
     setInterval(tickFactory,25);
