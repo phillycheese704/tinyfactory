@@ -418,6 +418,7 @@
     .machine-icon.rainbowdropper .model-energy{animation-duration:.8s}
     .machine-icon.turbodropper .model-piston{animation-duration:.42s}
     .machine-icon.infidropper .model-piston{animation-duration:.24s}
+    .machine-icon.off .model-energy{animation-play-state:paused;opacity:.38}
     .machine-icon.off .model-rotor,.machine-icon.off .model-rotor-reverse,
     .machine-icon.off .model-piston,.machine-icon.off .model-portal,
     .machine-icon.off .model-flow,.machine-icon.off .model-arc{animation-play-state:paused;opacity:.48}
@@ -446,6 +447,17 @@
     body.simulation-paused .blob,body.simulation-paused .blob *,
     body.simulation-paused .blob::before,body.simulation-paused .blob::after{
       animation-play-state:paused!important;
+    }
+    body[data-graphics-quality="ultra"] .blob.rainbow::before,
+    body[data-graphics-quality="ultra"] .blob.quantum::before{
+      content:"";position:absolute;inset:-6px;border-radius:50%;
+      background:radial-gradient(circle,#c9b3ff55,#7967ef19 60%,transparent 75%);
+      animation:quantum-shimmer 2s ease-in-out infinite;
+      pointer-events:none;
+    }
+    body[data-graphics-quality="ultra"] .blob.rainbow::before{
+      background:conic-gradient(from 0deg,#fd8cd866,#ffe09955,#93f4d655,#999cf555,#fd8cd866);
+      animation:rainbow-turn 4s linear infinite;
     }
     body[data-graphics-quality="balanced"] .machine-icon,
     body[data-graphics-quality="balanced"] .item-art svg{filter:none}
