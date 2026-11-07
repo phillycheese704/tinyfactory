@@ -213,6 +213,12 @@
     body.delete-active .grid-cell.occupied:hover { background: #ffdede; box-shadow: inset 0 0 0 2px #d84141; }
     .toast { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--hot-slot) + 44px); left: 50%; transform: translate(-50%, 8px); z-index: 80; opacity: 0; pointer-events: none; background: #fff8d6; border: var(--stroke); border-radius: 12px 9px 13px 10px; box-shadow: 3px 4px 0 var(--ink); padding: 10px 20px; font-size: 15px; font-weight: 800; white-space: nowrap; transition: opacity .18s, transform .18s; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .page-nav{position:fixed;z-index:9;left:0;right:0;top:50%;pointer-events:none;display:flex;align-items:center;justify-content:space-between;transform:translateY(-50%);padding:0 max(4px,env(safe-area-inset-left));gap:8px}
+    .page-arrow{pointer-events:auto;display:grid;place-items:center;width:clamp(36px,5vw,54px);height:clamp(58px,8vw,76px);border:2px solid #363636;border-radius:14px;background:#fff7d9dd;box-shadow:2px 3px 0 #343434;color:#353535;font:900 48px/1 sans-serif;touch-action:manipulation;cursor:pointer}
+    .page-arrow:disabled{opacity:.25;cursor:default}
+    .page-indicator{position:absolute;left:50%;top:-24px;transform:translateX(-50%);background:#fffdf0df;border:1.5px solid #5c5c5c;border-radius:9px;padding:4px 10px;font:800 12px sans-serif;pointer-events:none}
+    .page-nav .page-prev{margin-right:auto}.page-nav .page-next{margin-left:auto}
+    @media(max-width:540px){.page-arrow{width:31px;height:54px;font-size:38px;border-radius:9px}.page-indicator{top:-26px}}
     .brand-group{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
     .icon-control{display:grid;place-items:center;width:32px;height:32px;border:2px solid var(--ink);background:#e8f6ff;border-radius:10px;font:900 23px/1 sans-serif;cursor:pointer}
     .shop-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px clamp(20px,3.5vw,48px) 2px}
@@ -397,6 +403,22 @@
       <div class="bag-grid" id="bagGrid" aria-label="36 backpack slots"></div>
     </section>
   </div>
+  <nav class="page-nav" aria-label="Factory pages">
+    <button type="button" id="prevPage" class="page-arrow page-prev" aria-label="Previous factory page" disabled>‹</button>
+    <span id="pageIndicator" class="page-indicator" aria-live="polite">Page 1</span>
+    <button type="button" id="nextPage" class="page-arrow page-next" aria-label="Next factory page">›</button>
+  </nav>
+  <div class="sorter-panel" id="unlockPagePanel" role="dialog" aria-modal="true" aria-label="Unlock another factory page">
+    <div class="sorter-config">
+      <h2>🏭 Unlock another factory?</h2>
+      <p id="unlockPagePrice">Page 2 costs $50M.</p>
+      <p>Each page is a separate factory: blobs never cross between pages. All unlocked pages produce at the same time.</p>
+      <div class="sorter-actions">
+        <button type="button" id="cancelPageUnlock">Cancel</button>
+        <button type="button" id="confirmPageUnlock">Unlock page</button>
+      </div>
+    </div>
+  </div>
   <div class="factory-actions" aria-label="Factory controls">
     <button type="button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo building action" disabled>↶</button>
     <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo building action" disabled>↷</button>
@@ -517,8 +539,11 @@
     const BACKPACK_SIZE = 36;
     const MIN_GRID_SIDE = 14;
     // Stable row/column positions survive viewport and iPad orientation changes.
-    const placed = new Map(); // "row,column" -> { type, direction, enabled, clocks }
-    const blobs = new Map(); // Each moving black dot has a unique ID.
+    let placed = new Map(); // Active factory page's "row,column" machines.
+    let blobs = new Map(); // Active factory page's separate blob stream.
+    let currentPage=0;
+    const factoryPages=[{placed,blobs,lastMovementAt:0}];
+    let renderCurrentPage=true;
     let nextBlobId = 1;
     let lastMovementAt = 0;
     const MOVE_MS = 250;
@@ -691,6 +716,54 @@
       const clean=(k,v)=>typeof v==='bigint'?v.toString()+'n':v instanceof Map?[...v]:v;
       return JSON.stringify(snapshot,clean);
     }
+    function pagePurchasePrice(index){
+      if(index===1)return 50000000n;
+      if(index===2)return 1000000000n;
+      return 10n**BigInt(index+7);
+    }
+    function updatePageControls(){
+      $('prevPage').disabled=currentPage===0;
+      $('pageIndicator').textContent='Page '+(currentPage+1)+' / '+factoryPages.length;
+      const next=currentPage+1;
+      $('nextPage').title=next<factoryPages.length?'Page '+(next+1):
+        'Unlock page '+(next+1)+' for $'+formatAmount(pagePurchasePrice(next));
+      $('nextPage').setAttribute('aria-label',$('nextPage').title);
+    }
+    function switchFactoryPage(index){
+      if(index<0||index>=factoryPages.length||index===currentPage)return;
+      placed=factoryPages[index].placed;blobs=factoryPages[index].blobs;
+      currentPage=index;
+      wireLayoutsDirty=true;wirePorts.clear();
+      undoStack.length=0;redoStack.length=0;updateUndoButtons();
+      selectedHotbar=null;selected=null;deleteActive=false;rotateActive=false;
+      moveActive=false;moveFrom=null;
+      clearPlacementPreview();
+      renderInventory();buildGrid();renderStats();updatePageControls();markDirty();
+    }
+    function requestNextPage(){
+      if(currentPage+1<factoryPages.length){switchFactoryPage(currentPage+1);return;}
+      const price=pagePurchasePrice(factoryPages.length);
+      $('unlockPagePrice').textContent='Page '+(factoryPages.length+1)+' costs $'+formatAmount(price)+'.';
+      $('confirmPageUnlock').disabled=!canAfford(price);
+      $('unlockPagePanel').classList.add('open');
+      $('cancelPageUnlock').focus();
+    }
+    function closePageUnlock(){$('unlockPagePanel').classList.remove('open');}
+    $('prevPage').addEventListener('click',()=>switchFactoryPage(currentPage-1));
+    $('nextPage').addEventListener('click',requestNextPage);
+    $('cancelPageUnlock').addEventListener('click',closePageUnlock);
+    $('unlockPagePanel').addEventListener('click',event=>{
+      if(event.target===$('unlockPagePanel'))closePageUnlock();
+    });
+    $('confirmPageUnlock').addEventListener('click',()=>{
+      const price=pagePurchasePrice(factoryPages.length);
+      if(!canAfford(price)){showToast('Not enough money');return;}
+      money-=price;stats.spent+=price;updateMoney();
+      factoryPages.push({placed:new Map(),blobs:new Map(),lastMovementAt:factoryNow()});
+      closePageUnlock();
+      switchFactoryPage(factoryPages.length-1);
+      showToast('Unlocked Page '+factoryPages.length);
+    });
     function updateUndoButtons(){
       $('undoBtn').disabled=!undoStack.length;
       $('redoBtn').disabled=!redoStack.length;
@@ -984,7 +1057,10 @@
     function resetGame(){
       document.body.classList.remove('money-holding');
       document.body.classList.add('resetting');
-      money=0n;giantBalance.clear();clearMoneyTrend();placed.clear();
+      money=0n;giantBalance.clear();clearMoneyTrend();
+      factoryPages.splice(1);
+      currentPage=0;placed=factoryPages[0].placed;blobs=factoryPages[0].blobs;
+      placed.clear();blobs.clear();updatePageControls();
       loadStats(null);bottleneckVisible=false;$('bottleneckToggle').checked=false;blobs.clear();nextBlobId=1;lastMovementAt=factoryNow();
       for(let i=0;i<HOTBAR_SIZE;i++){
         inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
@@ -1910,6 +1986,7 @@
       return connected;
     }
     function renderGrid() {
+      if(!renderCurrentPage)return;
       rebuildWireLayouts();
       const now=factoryNow();
       const blocked=new Map();
@@ -2509,6 +2586,7 @@
       markDirty();renderBlobs();return true;
     }
     function renderBlobs(){
+      if(!renderCurrentPage)return;
       const layer=$('blobLayer');if(!layer)return;
       const visible=new Set();
       const palette={black:'#202020',bronze:'#b77d41',silver:'#c5d0df',gold:'#f4c63f',
@@ -3124,6 +3202,7 @@
         else if($('statsPanel').classList.contains('open'))setStatsOpen(false);
         else if($('shopInfoPanel').classList.contains('open'))closeShopInfo();
         else if($('routingPanel').classList.contains('open'))closeRouting();
+        else if($('unlockPagePanel').classList.contains('open'))closePageUnlock();
         else if(editingSorter!==null)closeSorter();
         else if(editingValueGate!==null)closeValueGate();
         else if($('backpackLayer').classList.contains('is-open'))setBackpack(false);
@@ -3144,7 +3223,7 @@
       }
       if(event.altKey||ctrl||$('shopLayer').classList.contains('is-open')||
          $('backpackLayer').classList.contains('is-open')||
-         ['statsPanel','shopInfoPanel','resetPanel','sorterPanel','valueGatePanel','routingPanel'].some(id=>$(id).classList.contains('open')))
+         ['statsPanel','shopInfoPanel','resetPanel','sorterPanel','valueGatePanel','routingPanel','unlockPagePanel'].some(id=>$(id).classList.contains('open')))
         return;
       const key=event.key.toLowerCase();
       if(/^[1-9]$/.test(key)){event.preventDefault();tapSlot({zone:'hotbar',index:Number(key)-1});}
