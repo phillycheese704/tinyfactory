@@ -1481,10 +1481,179 @@
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitFactoryGrid).observe(document.querySelector('.hotbar-wrap'));
 
     // Individual illustrated SVGs keep the animations working in iPad Safari.
+function renderMachineFrame(type,inside,classes=''){
+  return `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 48l5 5h47l4-5" fill="#31455955" stroke="#26384a55" stroke-width="1"/>
+    ${inside}
+    <g class="machine-detail" pointer-events="none">
+      <path d="M8 12L12 8h8M44 8h8l4 4" fill="none" stroke="#fff" stroke-width="1.5" opacity=".5"/>
+      <circle cx="7" cy="10" r="1.35" fill="#263444" opacity=".65"/>
+      <circle cx="57" cy="46" r="1.35" fill="#263444" opacity=".65"/>
+      <path class="bevel-hilight" d="M11 4h19" fill="none" stroke="#fff" stroke-width="1.2"/>
+    </g></svg>`;
+}
+    function advancedModel(type,direction,incoming,powered,enabled,pulsing,frame){
+  const category=newMachineCategories.Production.includes(type)?'dropper':
+    newMachineCategories.Power.includes(type)?'power':
+    newMachineCategories.Transport.includes(type)?'transport':'processor';
+  const accents={
+    FusionChamber:'#ff9d71',Quantumifyier:'#8c8bff',Cloner:'#79cef7',
+    Infinifyer:'#bd80ff',Cleaner:'#7fd8a6',QuantumComputer:'#ad9bff',
+    MightyDropper:'#e7bb45',RainbowDropper:'#e79cfc',TurboDropper:'#ff875f',
+    QuantumDropper:'#a392fc',InfiDropper:'#c4b1ff',FusionReactor:'#ffa456',
+    SolarField:'#eabf4f',Recycler:'#72bb90',DysonSphere:'#ffe194',
+    AdvancedConveyor:'#5ebc9c',HyperConveyor:'#5cd9ef',WireLift:'#b0b4ce',
+    CounterGate:'#e3b873',OverflowDrain:'#76c2c1',TimerGate:'#b4d58a',
+    Supercharger:'#e9a1fc',Singularity:'#9b75f1',DimensionalRift:'#9c6bf3'
+  };
+  const accent=accents[type]||'#8bc9dc';
+  const casing=category==='dropper'?'#eadfed':category==='power'?'#e6d1b1':
+    category==='transport'?'#bbded1':'#c0d7e9';
+  const ring=(radius=15)=>`<circle cx="32" cy="28" r="${radius}" fill="#182d46" stroke="${accent}" stroke-width="3"/>`;
+  const orbit=`<g class="model-rotor"><ellipse cx="32" cy="28" rx="21" ry="8" fill="none" stroke="${accent}" stroke-width="2.7" stroke-dasharray="14 4"/>
+    <circle cx="11" cy="28" r="3" fill="#fff"/><circle cx="53" cy="28" r="3" fill="${accent}"/></g>`;
+  const belt=()=>{
+    const input=incoming==null?(direction+2)%4:incoming;
+    const point=d=>[[32,1],[63,28],[32,55],[1,28]][d];
+    const a=point(input),b=point(direction);
+    const path=`M${a[0]} ${a[1]} Q32 28 ${b[0]} ${b[1]}`;
+    return `<path d="${path}" fill="none" stroke="#355366" stroke-width="19" stroke-linecap="round"/>
+      <path d="${path}" fill="none" stroke="#182e49" stroke-width="14" stroke-linecap="round"/>
+      <path class="model-flow" d="${path}" fill="none" stroke="${accent}" stroke-width="9" stroke-dasharray="10 10" stroke-linecap="round"/>
+      <path d="${path}" fill="none" stroke="#fff" stroke-width="2" opacity=".55"/>`;
+  };
+  let model='';
+  switch(type){
+    case 'FusionChamber':
+      model=`<path d="M5 27h16m22 0h16" stroke="#778a95" stroke-width="9"/>
+        <g class="model-piston"><path d="M9 17h17l6 11-6 11H9zM55 17H38l-6 11 6 11h17z" fill="#ea917c" stroke="#743942" stroke-width="2"/></g>
+        ${ring(11)}<g class="model-energy"><circle cx="32" cy="28" r="6.5" fill="#ffdb87"/>
+        <circle cx="29" cy="26" r="2" fill="white"/></g>`;
+      break;
+    case 'Quantumifyier':
+      model=`${ring(19)}${orbit}<g class="model-rotor-reverse"><ellipse cx="32" cy="28" rx="8" ry="20" fill="none" stroke="#d1f5ff" stroke-width="2" stroke-dasharray="5 3"/></g>
+        <circle class="model-energy" cx="32" cy="28" r="7.5" fill="#b0a5ff" stroke="#fff" stroke-width="1.4"/>`;
+      break;
+    case 'Cloner':
+      model=`<path d="M4 28h56" stroke="#6f96b2" stroke-width="6"/>
+        <rect x="12" y="11" width="17" height="34" rx="6" fill="#6cb8e2" stroke="#315b84" stroke-width="2"/>
+        <rect x="35" y="11" width="17" height="34" rx="6" fill="#6cb8e2" stroke="#315b84" stroke-width="2"/>
+        <path class="model-energy" d="M16 18h9v19h-9zM39 18h9v19h-9z" fill="#d1f8ff"/>
+        <path class="model-flow" d="M31 23h3m-3 10h3" stroke="#fff" stroke-width="3" stroke-dasharray="2 3"/>`;
+      break;
+    case 'Infinifyer':
+      model=`${ring(21)}<g class="model-portal">
+        <path d="M13 28c0-15 17-15 19 0 2 15 19 15 19 0S34 13 32 28s-19 15-19 0" fill="none" stroke="#d9aaff" stroke-width="5"/>
+        <circle cx="32" cy="28" r="7" fill="#fff0ff" opacity=".8"/></g>
+        <g class="model-energy"><circle cx="12" cy="27" r="3" fill="#fff"/><circle cx="52" cy="27" r="3" fill="#fff"/></g>`;
+      break;
+    case 'Cleaner':
+      model=`<rect x="15" y="9" width="34" height="38" rx="9" fill="#c4f8e1" stroke="#438f76" stroke-width="3"/>
+        <path d="M18 19h28m-28 8h28m-28 8h28" stroke="#5cb39c" stroke-width="3" stroke-dasharray="5 3"/>
+        <g class="model-particle" fill="#fff"><circle cx="27" cy="16" r="3"/><circle cx="36" cy="27" r="3"/><circle cx="25" cy="39" r="2"/></g>`;
+      break;
+    case 'QuantumComputer':
+      model=`<path d="M3 18h13m32 0h13M3 38h13m32 0h13M32 2v11m0 31v10" stroke="#5c80ac" stroke-width="4"/>
+        <rect x="15" y="12" width="34" height="32" rx="6" fill="#292e67" stroke="#8c93eb" stroke-width="3"/>
+        <path class="model-flow" d="M20 17h24v22H20z" stroke="#a5e9ff" stroke-width="2" fill="none" stroke-dasharray="6 5"/>
+        <rect class="model-energy" x="25" y="20" width="14" height="16" rx="3" fill="#c6b9ff" stroke="#fff" stroke-width="1.5"/>`;
+      break;
+    case 'MightyDropper':case 'RainbowDropper':case 'TurboDropper':
+    case 'QuantumDropper':case 'InfiDropper':{
+      const color=type==='MightyDropper'?'#f4c648':type==='RainbowDropper'?'#d899ed':
+        type==='TurboDropper'?'#fc895d':type==='QuantumDropper'?'#9d91ff':'#bb9afc';
+      const extra=type==='RainbowDropper'?
+        '<g class="model-rotor"><circle cx="26" cy="17" r="3" fill="#ff8991"/><circle cx="38" cy="17" r="3" fill="#ffe173"/><circle cx="32" cy="10" r="3" fill="#7becc9"/></g>':
+        type==='QuantumDropper'?'<circle class="model-energy" cx="32" cy="18" r="6" fill="#b9adff" stroke="#fff" stroke-width="1"/>':
+        type==='InfiDropper'?'<path class="model-energy" d="M22 18c0-8 9-8 10 0s10 8 10 0-9-8-10 0-10 8-10 0" fill="none" stroke="#fff" stroke-width="2.5"/>':
+        type==='TurboDropper'?'<g class="model-rotor"><path d="M17 16h8M39 16h8" stroke="#fef3dd" stroke-width="4"/></g>':
+        '<path d="M23 17h18" stroke="#fff6b2" stroke-width="3"/>';
+      model=`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
+        <path d="M12 8h40v14l-10 8H22L12 22z" fill="${color}" stroke="#524860" stroke-width="3"/>
+        <path d="M19 12h26v10H19z" fill="#ffffff8f"/>
+        ${extra}
+        <g class="model-piston"><rect x="26" y="27" width="12" height="14" rx="3" fill="#52677e" stroke="#233445" stroke-width="2"/>
+        <path d="M32 40v8m-5-5 5 5 5-5" stroke="${color}" stroke-width="3" fill="none"/></g>
+        <circle class="model-particle" cx="32" cy="49" r="4" fill="${color}" stroke="#fff" stroke-width="1"/></g>`;
+      break;
+    }
+    case 'FusionReactor':
+      model=`${ring(21)}<g class="model-rotor"><path d="M32 7v42M11 28h42M17 13l30 30M47 13L17 43" stroke="${accent}" stroke-width="4"/></g>
+        <circle class="model-energy" cx="32" cy="28" r="11" fill="#ffbf7f" stroke="#fff0ca" stroke-width="3"/>
+        <path class="model-arc" d="M23 11l-6 14h9l-6 15M43 12l-5 13h9l-10 16" fill="none" stroke="#fff6b5" stroke-width="3" stroke-linejoin="round"/>`;
+      break;
+    case 'SolarField':
+      model=`<g transform="rotate(-6 32 28)"><rect x="6" y="9" width="52" height="38" rx="5" fill="#144d87" stroke="#7894bc" stroke-width="3"/>
+        ${[0,1,2].map(i=>[0,1,2,3].map(j=>`<rect x="${10+j*12}" y="${12+i*11}" width="10" height="9" rx="1" fill="${(i+j)%2?'#5fabe6':'#84d0ff'}" stroke="#2c679e" stroke-width=".8"/>`).join('')).join('')}
+        <path class="model-energy" d="M8 11l43 31" stroke="#fff8a0" stroke-width="3" opacity=".55"/></g>`;
+      break;
+    case 'Recycler':
+      model=`${ring(20)}<g class="model-rotor">
+        <path d="M32 12l-6 8h11zM49 35l-10-1 6-9zM15 35l10 1-6-9z" fill="#b3f6ae" stroke="#276e5c" stroke-width="2"/>
+        <path d="M28 12A17 17 0 0 1 48 31M45 37A17 17 0 0 1 17 37M17 28A17 17 0 0 1 28 12" fill="none" stroke="#88dcb2" stroke-width="4"/></g>
+        <circle cx="32" cy="28" r="8" fill="#bce9bf" stroke="#fff" stroke-width="2"/>`;
+      break;
+    case 'DysonSphere':
+      model=`${ring(22)}<circle cx="32" cy="28" r="13" fill="#ffde80"/>
+        <path class="model-energy" d="M32 11v34M15 28h34M20 16l24 24M44 16L20 40" stroke="#fffbd6" stroke-width="3"/>
+        <g class="model-rotor"><ellipse cx="32" cy="28" rx="23" ry="12" transform="rotate(35 32 28)" fill="none" stroke="#e9c883" stroke-width="4" stroke-dasharray="22 6"/></g>
+        <g class="model-rotor-reverse"><ellipse cx="32" cy="28" rx="22" ry="13" transform="rotate(-35 32 28)" fill="none" stroke="#f5f3ca" stroke-width="2"/></g>`;
+      break;
+    case 'AdvancedConveyor':case 'HyperConveyor':
+      model=`${belt()}<g transform="rotate(${((direction+3)%4)*90} 32 28)"><path d="M25 18l7-7 7 7M25 38l7 7 7-7" fill="none" stroke="#ffffff" stroke-width="2.5"/></g>
+        ${type==='HyperConveyor'?'<path class="model-energy" d="M4 6h56M4 50h56" stroke="#83f3ff" stroke-width="3"/>':''}`;
+      break;
+    case 'WireLift':
+      model=`<path d="M1 27h62" stroke="#486c71" stroke-width="12"/>
+        <path d="M3 27h58" stroke="#9bdeab" stroke-width="5" stroke-dasharray="8 7"/>
+        <path d="M12 39Q32 3 52 39" fill="none" stroke="#586c99" stroke-width="8"/>
+        <path class="model-flow" d="M12 39Q32 3 52 39" fill="none" stroke="#ffe7a2" stroke-width="4" stroke-dasharray="7 5"/>
+        <circle cx="12" cy="39" r="4" fill="#fff"/><circle cx="52" cy="39" r="4" fill="#fff"/>`;
+      break;
+    case 'CounterGate':
+      model=`${belt()}<rect x="21" y="13" width="22" height="25" rx="5" fill="#f7dfa8" stroke="#7b573c" stroke-width="2"/>
+        <text x="32" y="31" font-size="18" text-anchor="middle" font-family="Arial" font-weight="900" fill="#533d36">N</text>
+        <circle class="model-energy" cx="48" cy="12" r="4" fill="#a1f49f"/>`;
+      break;
+    case 'OverflowDrain':
+      model=`${belt()}<path d="M28 10v15h21v15" fill="none" stroke="#79c9d5" stroke-width="8" stroke-linecap="round"/>
+        <path class="model-flow" d="M28 10v15h21v15" fill="none" stroke="#f3fffa" stroke-width="3" stroke-dasharray="4 7"/>
+        <path d="M42 34l7 8 7-8" fill="none" stroke="#fff" stroke-width="2"/>`;
+      break;
+    case 'TimerGate':
+      model=`${belt()}<circle cx="32" cy="28" r="17" fill="#e1f5c4" stroke="#567a5e" stroke-width="3"/>
+        <g class="model-rotor"><path d="M32 14v14l11 6" fill="none" stroke="#3b6044" stroke-width="3" stroke-linecap="round"/></g>
+        <circle cx="32" cy="28" r="3" fill="#fff" stroke="#567a5e"/>`;
+      break;
+    case 'Supercharger':
+      model=`${ring(22)}<g class="model-rotor"><path d="M32 5l6 15 17 8-17 8-6 15-6-15-17-8 17-8z" fill="none" stroke="${accent}" stroke-width="4"/></g>
+        <path class="model-arc" d="M36 11L22 30h13l-8 17 20-25H33z" fill="#ffe78c" stroke="#fff6c8" stroke-width="2"/>`;
+      break;
+    case 'Singularity':
+      model=`${ring(22)}<g class="model-portal"><path d="M12 26c6-17 33-16 39 2-6 19-33 15-39-2z" fill="none" stroke="#cfafff" stroke-width="4" stroke-dasharray="10 4"/>
+        <path d="M17 35c-8-23 37-30 30-1" fill="none" stroke="#9ad6ff" stroke-width="3"/></g>
+        <circle cx="32" cy="28" r="11" fill="#080620" stroke="#7f60cb" stroke-width="2"/>
+        <circle class="model-energy" cx="26" cy="24" r="3" fill="#e6ceff"/>`;
+      break;
+    case 'DimensionalRift':
+      model=`<ellipse cx="32" cy="28" rx="24" ry="20" fill="#c7b7ff" stroke="#6a4ab3" stroke-width="3"/>
+        <g class="model-portal"><path d="M13 28c3-17 28-24 37-8 9 16-17 32-28 17-11-15 9-27 19-17" fill="none" stroke="#6943c7" stroke-width="7" stroke-linecap="round"/>
+        <path d="M13 28c3-17 28-24 37-8 9 16-17 32-28 17-11-15 9-27 19-17" fill="none" stroke="#e7d7ff" stroke-width="2" stroke-linecap="round"/></g>
+        <circle cx="32" cy="28" r="5" fill="#160b52"/>`;
+      break;
+  }
+  const plating=`<rect x="3" y="4" width="58" height="48" rx="9" fill="#40556b" stroke="#28344b" stroke-width="3"/>
+    <rect x="6" y="6" width="52" height="42" rx="8" fill="${casing}" stroke="#ecf8ff" stroke-width="1.4"/>
+    <path d="M9 10h46M9 46h46" fill="none" stroke="#fff" opacity=".5" stroke-width="1.5"/>
+    <path d="M8 44h48" fill="none" stroke="#1a3044" opacity=".27" stroke-width="2"/>
+    <circle cx="9" cy="10" r="2" fill="#547080" stroke="#dfeeff" stroke-width="1"/>
+    <circle cx="55" cy="46" r="2" fill="#547080" stroke="#dfeeff" stroke-width="1"/>`;
+  return frame(`${plating}${model}`,`${powered?'powered ':''}${pulsing?'is-pulsing ':''}${enabled?'':'off'}`);
+}
     function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0, autoWireDirs = null) {
       if (!type) return '';
       const stroke = 'stroke="#292929" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"';
-      const frame = (inside, classes='') => `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">${inside}</svg>`;
+      const frame = (inside, classes='') => renderMachineFrame(type,inside,classes);
       if (type === 'Dropper') return frame(`<g transform="rotate(${((direction+3)%4)*90} 32 28)">
         <path d="M12 15L17 8h30l5 7v9H12z" fill="#b6ddff" ${stroke}/>
         <path d="M22 8V4h20v4M13 25h38M17 25v20h30V25" fill="#e4effa" ${stroke}/>
@@ -1627,44 +1796,8 @@
           ${sockets}<circle cx="32" cy="28" r="8" fill="#ffdd77" stroke="#7c672c" stroke-width="2"/>
           <path d="M34 17l-8 13h7l-4 11 13-18h-8z" fill="#fff8d0" stroke="#916f27" stroke-width="1.4"/>`,powered?'powered':'');
       }
-      if(newMachineCategories && Object.values(newMachineCategories).some(names=>names.includes(type))){
-        const category=newMachineCategories.Production.includes(type)?'dropper':
-          newMachineCategories.Power.includes(type)?'power':
-          newMachineCategories.Transport.includes(type)?'transport':'processor';
-        const arts={
-          FusionChamber:['FUS','#fc9675'],Quantumifyier:['Q×5','#829aff'],
-          Cloner:['×2','#82d4ff'],Infinifyer:['∞','#b68eff'],
-          Cleaner:['CL','#79c9a3'],QuantumComputer:['QPC','#8c90f2'],
-          MightyDropper:['G','#edc35e'],RainbowDropper:['RGB','#d88def'],
-          TurboDropper:['>>','#e47d55'],QuantumDropper:['Q','#7b85e6'],
-          InfiDropper:['INF','#a38dee'],FusionReactor:['FR','#e6a757'],
-          SolarField:['SOL','#f0cf57'],Recycler:['RC','#8abb77'],
-          DysonSphere:['DS','#dfba53'],AdvancedConveyor:['1.5','#85c7ad'],
-          HyperConveyor:['4×','#64dfbb'],WireLift:['WL','#8ab7c6'],
-          CounterGate:['N','#cbaf6d'],OverflowDrain:['OV','#83d1c7'],
-          TimerGate:['T','#add38a'],Supercharger:['5×','#db8eeb'],
-          Singularity:['SG','#ac86de'],DimensionalRift:['RIFT','#b387f0']
-        };
-        const [letters,accent]=arts[type];
-        const tint=category==='dropper'?'#f6eaff':category==='power'?'#ffefbe':
-          category==='transport'?'#dcf9e7':'#dceaff';
-        const piping=category==='dropper'?
-          '<path d="M24 4v12h16V4M27 43l5 9 5-9" stroke="#5d5472" fill="none" stroke-width="3"/>':
-          category==='power'?
-          '<path d="M30 6l-9 20h10l-4 22 17-26H33l6-16" fill="#f8c84f" stroke="#755b32" stroke-width="2"/>':
-          category==='transport'?
-          '<path d="M0 28h17m30 0h17" stroke="#477d65" stroke-width="7"/>':
-          '<path d="M0 28h14m36 0h14M32 3v10M32 43v10" stroke="#57769c" stroke-width="6"/>';
-        const fontSize=letters.length>=4?10:letters.length>=3?13:letters.length===2?17:24;
-        return frame(`<rect x="4" y="5" width="56" height="46" rx="11" fill="${tint}" stroke="#343945" stroke-width="2.8"/>
-          <rect x="10" y="10" width="44" height="36" rx="9" fill="#fff9f0" stroke="${accent}" stroke-width="2.4"/>
-          ${piping}
-          <circle cx="32" cy="28" r="18" fill="${accent}" stroke="#343945" stroke-width="2.5"/>
-          <circle cx="32" cy="28" r="13" fill="#ffffff" opacity=".48"/>
-          <text x="32" y="33" font-size="${fontSize}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" fill="#283445">${letters}</text>
-          <circle cx="12" cy="13" r="2.5" fill="#fff"/><circle cx="52" cy="43" r="2.5" fill="#fff"/>`,
-          (powered?'powered ':'')+(pulsing?'is-pulsing':''));
-      }
+      if(newMachineCategories && Object.values(newMachineCategories).some(names=>names.includes(type)))
+        return advancedModel(type,direction,incoming,powered,enabled,pulsing,frame);
       if(type==='MegaPart')return frame(`<rect x="3" y="4" width="58" height="49" rx="7" fill="#bfddea" stroke="#45637b" stroke-width="3"/>
         <path d="M5 16h54M5 41h54M18 4v49M46 4v49" stroke="#7ea4c2" stroke-width="2.4"/>
         <circle cx="32" cy="28" r="6" fill="#eee9ff" stroke="#526f9b" stroke-width="2"/>`);
