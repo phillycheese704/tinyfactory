@@ -102,6 +102,8 @@
     .move-toggle svg {width:70%;height:70%}
     .grid-cell.move-source {outline:3px dashed #30a36c;outline-offset:-3px;background:#ddfae5}
     .blob.icy .blob-dot {background:#51c5ff;border-color:#0878b7;box-shadow:0 0 8px #8ce4ff}
+    .blob.rainbow .blob-dot{background:conic-gradient(#f77,#ffdc59,#6e8,#6be7ff,#c8f,#f77)!important;border-color:#8d4fb3;box-shadow:0 0 8px #c8f}
+    .blob.quantum .blob-dot{background:#8d7aff!important;border-color:#4133bc;box-shadow:0 0 10px #8872ff}
     .blob.lasered .blob-dot {filter:drop-shadow(0 0 5px currentColor);border-color:#ff365b}
     .blob.ember .blob-dot {box-shadow:0 0 5px #ff8e42}
     .blob-ember {position:absolute;color:#ff8a35;font-size:13px;animation:ember-float 1s ease-in-out infinite;left:16px;top:4px;pointer-events:none}
@@ -2631,6 +2633,8 @@
         el.querySelector('.blob-ember').style.display=blob.ember?'block':'none';
         el.classList.toggle('collecting',blob.state==='collecting');
         el.classList.toggle('icy',blob.color==='blue');
+        el.classList.toggle('rainbow',blob.grade==='rainbow');
+        el.classList.toggle('quantum',blob.grade==='quantum');
         el.classList.toggle('ember',!!blob.ember);
         el.classList.toggle('plate',!!blob.plate);
         el.classList.toggle('lasered',!!blob.neon);
@@ -2850,6 +2854,7 @@
         return false;
       }
       if(type==='FusionChamber'){
+        if(machine.batch.length>=80)return false;
         machine.batch.push({...blob});
         if(machine.batch.length>=2){
           const [one,two]=machine.batch.splice(0,2);
@@ -2858,6 +2863,7 @@
         blobs.delete(blob.id);return true;
       }
       if(type==='Singularity'){
+        if(machine.batch.length>=80)return false;
         machine.batch.push({...blob,releaseAt:now+10000});
         blobs.delete(blob.id);return true;
       }
@@ -2928,7 +2934,8 @@
         occupied.delete(previous);occupied.add(next);
         blob.fromKey=previous;blob.key=next;blob.arrivedAt=now;changed=true;
         const reached=placed.get(next);
-        if(processorTypes.has(reached?.type)||['LaserCutter','LaserPart','AcceleratorPart','ParticleAccelerator'].includes(reached?.type))
+        if(processorTypes.has(reached?.type)||megaProcessors.has(placed.get(rootKey(next))?.type)||
+          ['LaserCutter','LaserPart','AcceleratorPart','ParticleAccelerator'].includes(reached?.type))
           stats.processed++;
         if(handleBlobArrival(blob,next,now)){occupied.delete(next);changed=true;continue;}
         if(reached?.type==='Extractor'||reached?.type==='DimensionalRift'){
@@ -3005,7 +3012,8 @@
           const next=neighbor(key,dir),obj=next&&placed.get(next);
           if(['Wire','WireLift'].includes(obj?.type)){
             if(!visited.has(next))queue.push(next);
-          }else if(canReceivePower.has(obj?.type)){
+          }else if(canReceivePower.has(obj?.type)||
+              canReceivePower.has(placed.get(rootKey(next))?.type)){
             const root=rootKey(next);
             if(!receivers.has(root))receivers.set(root,placed.get(root));
           }
