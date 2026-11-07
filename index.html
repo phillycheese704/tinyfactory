@@ -897,17 +897,9 @@
       return {...data,worth:parseMoney(data.worth,1n),shiny:!!data.shiny,ember:!!data.ember,
         melted:!!data.melted,plate:!!data.plate};
     }
-    function saveState(){
-      if(!saveDirty)return;
-      try{
-        const data={
-          version:1,pricingVersion:3,money:String(money),
-          stats:persistStats(),bottleneckVisible,
-          giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
-          prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
-          hotbar:inventory.hotbar,backpack:inventory.backpack,
-          hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
-          backpackCosts:inventoryCosts.backpack.map(String),
+    function serializePageState(state){
+      const {placed,blobs}=state;
+      return {
           placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart','HydraulicPart','MegaPart'].includes(obj.type)).map(([key,obj])=>[key,{
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
@@ -928,6 +920,22 @@
             }:undefined
           }]),
           blobs:[...blobs.values()].map(serializeBlob)
+      };
+    }
+    function saveState(){
+      if(!saveDirty)return;
+      try{
+        const data={
+          version:1,pricingVersion:3,money:String(money),
+          stats:persistStats(),bottleneckVisible,
+          giantBalance:[...giantBalance].map(([exponent,coefficient])=>[exponent,String(coefficient)]),
+          prices:Object.fromEntries(Object.entries(prices).map(([k,v])=>[k,String(v)])),
+          hotbar:inventory.hotbar,backpack:inventory.backpack,
+          hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
+          backpackCosts:inventoryCosts.backpack.map(String),
+          ...serializePageState(factoryPages[0]),
+          pages:factoryPages.slice(1).map(serializePageState),
+          activePage:currentPage
         };
         localStorage.setItem(SAVE_KEY,JSON.stringify(data));
         saveDirty=false;
@@ -991,6 +999,9 @@
             inventoryCosts.backpack[i]=parseMoney(data.backpackCosts?.[i]);
           }
         }
+        function restorePage(pageData,state){
+          placed=state.placed;blobs=state.blobs;
+          const data=pageData;
         if(Array.isArray(data.placed))for(const entry of data.placed){
           if(!Array.isArray(entry)||!/^\d+,\d+$/.test(entry[0])||!validMachines.has(migrateType(entry[1]?.type)))continue;
           const obj=machine(migrateType(entry[1].type),parseMoney(entry[1].purchaseCost));
@@ -1051,6 +1062,20 @@
           blobs.set(id,{...reviveBlob(b),id,key:b.key,state:b.state==='collecting'?'collecting':'waiting',arrivedAt:now,collectAt:now+350});
           nextBlobId=Math.max(nextBlobId,id+1);
         }
+
+        }
+        restorePage(data,factoryPages[0]);
+        if(Array.isArray(data.pages))for(const pageData of data.pages.slice(0,200)){
+          if(!pageData||typeof pageData!=='object')continue;
+          const state={placed:new Map(),blobs:new Map(),lastMovementAt:factoryNow()};
+          factoryPages.push(state);
+          restorePage(pageData,state);
+        }
+        currentPage=Number.isInteger(data.activePage)&&data.activePage>=0&&
+          data.activePage<factoryPages.length?data.activePage:0;
+        placed=factoryPages[currentPage].placed;
+        blobs=factoryPages[currentPage].blobs;
+        updatePageControls();
         wireLayoutsDirty=true;
       }catch(error){/* Ignore damaged or incomplete saved data. */}
     }
@@ -3064,16 +3089,11 @@
       }
       return delivered;
     }
-    function tickFactory(){
-      if(pausedAt!==null)return;
-      const now=factoryNow();let mustRender=false;
-      if(lastStatsTick){
-        stats.playMs+=Math.max(0,Math.min(60000,now-lastStatsTick));
-        if(now-lastStatsSavedAt>=1000){lastStatsSavedAt=now;markDirty();}
+    function tickPage(now,page){
+      let mustRender=false;
+      if(now-page.lastMovementAt>=25){
+        page.lastMovementAt=now;moveBlobs(now);
       }
-      lastStatsTick=now;
-      // Clear output tiles before attempting new drops at the maximum rate.
-      if(now-lastMovementAt>=25){lastMovementAt=now;moveBlobs(now);}
       for(const [key,obj] of placed){
         if(['FusionReactor','SolarField','DysonSphere'].includes(obj.type)&&obj.enabled){
           const period=obj.type==='FusionReactor'?4000:obj.type==='SolarField'?10000:3000;
@@ -3158,6 +3178,28 @@
         }
       }
       if(mustRender)renderGrid();
+    }
+    function tickFactory(){
+      if(pausedAt!==null)return;
+      const now=factoryNow();
+      if(lastStatsTick){
+        stats.playMs+=Math.max(0,Math.min(60000,now-lastStatsTick));
+        if(now-lastStatsSavedAt>=1000){lastStatsSavedAt=now;markDirty();}
+      }
+      lastStatsTick=now;
+      const displayed=currentPage;
+      try {
+        for(let index=0;index<factoryPages.length;index++){
+          const page=factoryPages[index];
+          placed=page.placed;blobs=page.blobs;
+          renderCurrentPage=index===displayed;
+          tickPage(now,page);
+        }
+      }finally{
+        placed=factoryPages[displayed].placed;
+        blobs=factoryPages[displayed].blobs;
+        renderCurrentPage=true;
+      }
     }
     setInterval(tickFactory,25);
     // Revert the indicator to a flat line when the last transaction ages out.
@@ -3291,6 +3333,7 @@
       if(document.visibilityState==='hidden')saveState();
     });
     loadSave();
+    updatePageControls();
     updateAllShopPrices();
     updateMoney();
     renderInventory();
