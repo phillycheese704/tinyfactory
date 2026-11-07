@@ -250,6 +250,9 @@
     .stats-grid>div{display:flex;flex-direction:column;gap:6px;background:#fff;border:1.5px solid #b6b6b6;border-radius:9px;padding:12px;min-width:0}
     .stats-grid small{color:#686868;font:700 12px sans-serif}
     .stats-grid strong{font:900 clamp(14px,2.3vw,22px)/1.2 sans-serif;overflow-wrap:anywhere}
+    .controls-help{border-top:1px dashed #888;padding-top:10px;font:700 13px/1.45 sans-serif}
+    .controls-help summary{cursor:pointer;font-weight:900;padding:5px;color:#345276}
+    .controls-help p{margin:7px 0}
     .stats-option{display:flex!important;flex-direction:row;align-items:center;gap:8px}
     .stats-option input{width:20px;height:20px;flex:none}
     .stats-note{font:700 12px/1.4 sans-serif;color:#555;margin:0}
@@ -458,6 +461,12 @@
       </div>
       <label class="stats-option"><input type="checkbox" id="bottleneckToggle"> Highlight bottlenecks (blocked for 2+ seconds)</label>
       <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
+      <details class="controls-help">
+        <summary>Keyboard, touch and controller help</summary>
+        <p><b>Keyboard:</b> 1–9 hotbar · R rotate · M move · X delete · P pause · Ctrl+Z undo · Ctrl+Y redo · Esc back.</p>
+        <p><b>Controller:</b> D-pad / left stick navigate · A interact · B back · X rotate · Y shop · LB/RB hotbar · LT/RT pages · Start pause · Select statistics · right stick zoom · R3 reset view.</p>
+        <p><b>Touch:</b> Tap to place · drag an inventory item to a tile · pinch with two fingers to zoom · use ✥ pan mode to move the factory. Page arrows sit at the left and right edges.</p>
+      </details>
     </section>
   </div>
   <div class="sorter-panel" id="shopInfoPanel" role="dialog" aria-modal="true" aria-label="Machine information">
@@ -1076,7 +1085,7 @@
 
         }
         restorePage(data,factoryPages[0]);
-        if(Array.isArray(data.pages))for(const pageData of data.pages.slice(0,200)){
+        if(Array.isArray(data.pages))for(const pageData of data.pages){
           if(!pageData||typeof pageData!=='object')continue;
           const state={placed:new Map(),blobs:new Map(),lastMovementAt:factoryNow()};
           factoryPages.push(state);
@@ -1096,7 +1105,9 @@
       money=0n;giantBalance.clear();clearMoneyTrend();
       factoryPages.splice(1);
       currentPage=0;placed=factoryPages[0].placed;blobs=factoryPages[0].blobs;
-      placed.clear();blobs.clear();updatePageControls();
+      placed.clear();blobs.clear();
+      factoryPages[0].lastMovementAt=factoryNow();
+      updatePageControls();
       loadStats(null);bottleneckVisible=false;$('bottleneckToggle').checked=false;blobs.clear();nextBlobId=1;lastMovementAt=factoryNow();
       for(let i=0;i<HOTBAR_SIZE;i++){
         inventory.hotbar[i]=null;inventoryCosts.hotbar[i]=[];
@@ -3000,14 +3011,14 @@
       const source=placed.get(sourceRoot);
       if(!['HydraulicPump','Turbine','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source?.type))return 0;
       const queue=[],visited=new Set(),receivers=new Map();
-      let initialWires=0;
+      const initialWireKeys=new Set();
       for(const from of machineKeys(sourceRoot,source)){
         if(!from)continue;
         for(let dir=0;dir<4;dir++){
           const next=neighbor(from,dir);
           if(next&&['Wire','WireLift'].includes(placed.get(next)?.type)){
-            if(source.type==='SolarField'&&initialWires>=2)continue;
-            queue.push(next);initialWires++;
+            if(source.type==='SolarField'&&!initialWireKeys.has(next)&&initialWireKeys.size>=2)continue;
+            queue.push(next);initialWireKeys.add(next);
           }
         }
       }
@@ -3525,7 +3536,9 @@
     });
     for(const name of ['pointerup','pointercancel','lostpointercapture'])balance.addEventListener(name,cancelMoneyHold);
     balance.addEventListener('contextmenu',event=>event.preventDefault());
-    setInterval(saveState,1200);
+    // Less synchronous localStorage work on iPads and console browsers;
+    // pagehide/visibilitychange still save immediately when exiting.
+    setInterval(saveState,3000);
     window.addEventListener('pagehide',saveState);
     document.addEventListener('visibilitychange',()=>{
       if(document.visibilityState==='hidden')saveState();
