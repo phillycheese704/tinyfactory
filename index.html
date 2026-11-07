@@ -724,6 +724,24 @@
     // Keep the shop's All tab sorted by the CURRENT next-purchase price.
     // Equal-price items retain their original shop order, and category tabs
     // keep the familiar order instead of jumping around.
+    const newMachineCategories={"Production":["MightyDropper","RainbowDropper","TurboDropper","QuantumDropper","InfiDropper"],"Processing":["FusionChamber","Quantumifyier","Cloner","Infinifyer","Cleaner","QuantumComputer","Singularity","DimensionalRift"],"Transport":["AdvancedConveyor","HyperConveyor","WireLift","CounterGate","OverflowDrain","TimerGate"],"Power":["FusionReactor","SolarField","Recycler","DysonSphere","Supercharger"]};
+    // Generate shop entries for advanced machinery, retaining the same buy and
+    // info controls, search and filters as existing shop cards.
+    for(const [category,names] of Object.entries(newMachineCategories)){
+      for(const type of names){
+        const card=document.createElement('div');
+        card.className='item';card.id='buy'+type;
+        card.setAttribute('role','button');card.tabIndex=0;
+        card.dataset.category=category;
+        const title=type.replace(/([a-z])([A-Z])/g,'$1 $2');
+        const art=document.createElement('span');art.className='item-art '+type.toLowerCase();
+        const bottom=document.createElement('span');bottom.className='item-bottom';
+        const name=document.createElement('span');name.className='item-name';name.textContent=title;
+        const price=document.createElement('span');price.className='price';price.id=type.toLowerCase()+'Price';
+        bottom.append(name,price);card.append(art,bottom);
+        $('shopItems').appendChild(card);
+      }
+    }
     const shopCards = [...document.querySelectorAll('#shopItems .item')];
     let activeShopCategory = 'All';
     function renderShopCategory(category=activeShopCategory){
@@ -748,7 +766,7 @@
             filter==='affordable'&&canAfford(prices[type])||
             filter==='owned'&&owned||
             filter==='unowned'&&!owned||
-            filter==='logic'&&['Splitter','Sorter','ValueGate'].includes(type)||
+            filter==='logic'&&logicTypes.has(type)||
             filter==='free'&&prices[type]===0n);
         item.dataset.hidden=String(!accepted);
         if(accepted)matches++;
@@ -1194,6 +1212,20 @@
           ${sockets}<circle cx="32" cy="28" r="8" fill="#ffdd77" stroke="#7c672c" stroke-width="2"/>
           <path d="M34 17l-8 13h7l-4 11 13-18h-8z" fill="#fff8d0" stroke="#916f27" stroke-width="1.4"/>`,powered?'powered':'');
       }
+      if(newMachineCategories && Object.values(newMachineCategories).some(names=>names.includes(type))){
+        const category=newMachineCategories.Production.includes(type)?'dropper':
+          newMachineCategories.Power.includes(type)?'power':
+          newMachineCategories.Transport.includes(type)?'transport':'processor';
+        const tint=category==='dropper'?'#efdeff':category==='power'?'#fff0b9':
+          category==='transport'?'#c9f5e0':'#cce9ff';
+        const glyph=category==='dropper'?'⬇':category==='power'?'⚡':
+          category==='transport'?'➜':'✦';
+        return frame(`<rect x="5" y="5" width="54" height="46" rx="11" fill="${tint}" stroke="#323b46" stroke-width="2.6"/>
+          <path d="M0 27h64" stroke="#647d9c" stroke-width="6"/>
+          <circle cx="32" cy="27" r="17" fill="#fff" stroke="#434d69" stroke-width="2.4"/>
+          <text x="32" y="34" font-size="22" text-anchor="middle" font-family="sans-serif" font-weight="900" fill="#3d4673">${glyph}</text>
+          <circle cx="13" cy="13" r="3" fill="#fff"/><circle cx="51" cy="41" r="3" fill="#fff"/>`);
+      }
       if (type === 'Wire' && shape > 0) {
         const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4];
         const input=incoming==null?(direction+2)%4:incoming;
@@ -1553,7 +1585,7 @@
       }
       return (direction+2)%4;
     }
-    for (const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','ValueGate','Presser']) {
+    for (const type of validMachines) {
       const shopArt = $('buy'+type).querySelector('.item-art');
       shopArt.innerHTML = iconFor(type);
     }
@@ -2032,7 +2064,7 @@
       updateAllShopPrices();updateMoney();renderInventory();markDirty();
       showToast('Bought '+count+' × '+item+(count<requested?' (limit reached)':''));
     }
-    for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','ValueGate','Presser']) {
+    for(const type of validMachines) {
       const card=$('buy'+type);
       card.addEventListener('click',()=>purchase(type));
       card.addEventListener('keydown',event=>{
@@ -2064,6 +2096,33 @@
       Presser:['1 tile','Presses blobs into plates; melted materials receive a larger value boost.','Adds $50, capped at $750.'],
       ParticleAccelerator:['3 × 3 tiles','Uses power to transform batches of five blobs into far more valuable outputs.','Starts at $1B.']
     };
+    const moreShopHelp={
+      FusionChamber:['2×2','Combines two incoming blobs into one, preserving their summed value.','+10% per purchase'],
+      Quantumifyier:['5×5','Multiplies passing blobs ×5 with a 5% chance to clone.','+10% per purchase'],
+      Cloner:['1×3','Creates a copy; the clone keeps 50% value, or 95% with power.','+10% per purchase'],
+      Infinifyer:['4×4','Produces five copies, each worth 25× the input value.','+10% per purchase'],
+      Cleaner:['1×1','Boosts adjacent processor multipliers and adders 1.15×.','+10% per purchase'],
+      QuantumComputer:['1×1','Multiplies ×50, duplicates the blob and strengthens all subsequent processors ×5.','+10% per purchase'],
+      MightyDropper:['1×1','Drops existing gold blobs every 2 seconds; its blobs receive 2× processing effectiveness. Powered speed doubles.','+10% per purchase'],
+      RainbowDropper:['1×1','Silver 10%, gold 70%, diamond 15%, rainbow 5% every 0.65 seconds; powered speed doubles.','+10% per purchase'],
+      TurboDropper:['1×1','Drops every upgradeable grade with 85% black and 1% rainbow, every 0.25 seconds.','+10% per purchase'],
+      QuantumDropper:['1×1','Drops non-upgradable quantum blobs (×50) once per second.','+10% per purchase'],
+      InfiDropper:['1×1','Every 0.2221s produces any blob tier; 2% chance of ten blobs (5% powered). Processing is ×3 stronger.','+10% per purchase'],
+      FusionReactor:['4×4','100 power per four seconds, costing $20K per burst.','+10% per purchase'],
+      SolarField:['5×5','Generates 1–15 power per ten seconds, no running cost. Maximum two output wires.','+10% per purchase'],
+      Recycler:['1×1','Converts an incoming blob into power based on its tier.','+10% per purchase'],
+      DysonSphere:['6×6','Fully powers all connected machines.','+10% per purchase'],
+      AdvancedConveyor:['1×1','Transports blobs 1.5× faster than a normal conveyor.','+10% per purchase'],
+      HyperConveyor:['1×1','Transports blobs 4× faster than a normal conveyor.','+10% per purchase'],
+      WireLift:['1×1','Carries power across a conveyor without stopping blobs.','Fixed $50'],
+      CounterGate:['Logic on conveyor','Routes every Nth blob to a chosen alternate output.','Fixed $10'],
+      OverflowDrain:['Logic on conveyor','Diverts blobs when the main exit is blocked.','Fixed $10'],
+      TimerGate:['Logic on conveyor','Alternates the preferred output on a timer.','Fixed $50'],
+      Supercharger:['1×1','Makes nearby processors and power sources ×5 stronger, and nearby conveyors ×5 faster.','+10% per purchase'],
+      Singularity:['1×1','Holds blobs for 10 seconds then sends two copies worth ×1,000 each.','+10% per purchase'],
+      DimensionalRift:['1×1','Sells entering blobs for ×100, with 50% chance to absorb other nearby blobs.','+10% per purchase']
+    };
+    Object.assign(shopHelp,moreShopHelp);
     function showShopInfo(type){
       const details=shopHelp[type]||['1 tile','A factory machine.','See shop for the next price.'];
       $('shopInfoName').textContent=type.replace(/([a-z])([A-Z])/g,'$1 $2');
