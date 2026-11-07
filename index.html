@@ -198,7 +198,7 @@
     .drag-ghost svg { width: 80%; height: 80%; }
     /* The board uses the whole safe rectangle, not a letterboxed 16x16 square.
        The number of square tiles adapts to the device, keeping installed machines visible. */
-    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; }
+    .factory-grid { position: absolute; left: 0; top: 0; width: 0; height: 0; display: grid; background: transparent; border: 2px solid transparent; border-radius: 5px; overflow: visible; pointer-events: auto; touch-action:none; }
     body.has-place-tool .factory-grid, body.dragging-to-grid .factory-grid { background: #fefefe; border-color: #797979; box-shadow: 3px 3px 0 #d8d8d8; pointer-events: auto; }
     body.delete-active .factory-grid { pointer-events: auto; }
     .grid-cell { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: crosshair; touch-action: none; }
@@ -417,7 +417,7 @@
         <div><small>Net / second</small><strong id="statNet">$0</strong></div>
         <div><small>Generators & power</small><strong id="statPower">0 / 0</strong></div>
         <div><small>Blobs in factory</small><strong id="statLiveBlobs">0</strong></div>
-        <div><small>Active machines</small><strong id="statMachines">0</strong></div>
+        <div><small>Placed machines</small><strong id="statMachines">0</strong></div>
         <div><small>Lifetime earned</small><strong id="statEarned">$0</strong></div>
         <div><small>Lifetime spent</small><strong id="statSpent">$0</strong></div>
         <div><small>Blobs sold / produced</small><strong id="statBlobs">0 / 0</strong></div>
