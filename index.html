@@ -640,16 +640,34 @@
         ordered.sort((a,b)=>prices[a.type]<prices[b.type]?-1:
           prices[a.type]>prices[b.type]?1:a.index-b.index);
       }
-      for(const {item} of ordered){
-        item.dataset.hidden=String(category!=='All'&&item.dataset.category!==category);
+      const search=$('shopSearch').value.trim().toLowerCase();
+      const filter=$('shopFilter').value;
+      let matches=0;
+      for(const {item,type} of ordered){
+        const owned=inventory.hotbar.includes(type)||inventory.backpack.includes(type)||
+          [...placed.values()].some(obj=>obj.type===type);
+        const searchable=item.querySelector('.item-name')?.textContent.toLowerCase()||type.toLowerCase();
+        const accepted=(category==='All'||item.dataset.category===category)&&
+          searchable.includes(search) && (
+            filter==='all' ||
+            filter==='affordable'&&canAfford(prices[type])||
+            filter==='owned'&&owned||
+            filter==='unowned'&&!owned||
+            filter==='logic'&&['Splitter','Sorter','ValueGate'].includes(type)||
+            filter==='free'&&prices[type]===0n);
+        item.dataset.hidden=String(!accepted);
+        if(accepted)matches++;
         $('shopItems').appendChild(item);
       }
+      $('shopResults').textContent=matches+' / '+shopCards.length+' machines';
     }
     function updateAllShopPrices(){
       for(const type of validMachines)
         $(type.toLowerCase()+'Price').textContent=formatPrice(prices[type]);
       renderShopCategory();
     }
+    $('shopSearch').addEventListener('input',()=>renderShopCategory());
+    $('shopFilter').addEventListener('change',()=>renderShopCategory());
     function serializeBlob(blob){
       return {id:blob.id,key:blob.key,worth:String(blob.worth),shiny:!!blob.shiny,ember:!!blob.ember,
         melted:!!blob.melted,plate:!!blob.plate,color:blob.color??'black',neon:!!blob.neon,
@@ -1707,11 +1725,11 @@
       const freeBag=inventory.backpack.indexOf(null);
       return freeBag<0?null:{zone:'backpack',index:freeBag};
     }
-    function purchase(item) {
+    function purchaseSingle(item) {
       const location=nextFreeSlot(item);
-      if(!location) {showToast('Inventory full');return;}
+      if(!location)return false;
       const price=prices[item];
-      if(!canAfford(price)) {showToast('Not enough money');return;}
+      if(!canAfford(price))return false;
       money-=price;stats.spent+=price;stats.purchases++;
       inventory[location.zone][location.index]=item;
       if(location.zone==='hotbar')inventoryCosts.hotbar[location.index].push(price);
@@ -1732,14 +1750,75 @@
         const grown=(price*5n+3n)/4n;
         prices[item]=grown>MAX_PRICE?MAX_PRICE:((grown+4n)/5n)*5n;
       }
-      $(`${item.toLowerCase()}Price`).textContent=formatPrice(prices[item]);
-      renderShopCategory();
-      updateMoney();renderInventory();markDirty();showToast('Bought '+item);
+      markDirty();return true;
+    }
+    function purchase(item){
+      const choice=$('bulkAmount').value;
+      const requested=choice==='max'?1000:Math.max(1,Math.min(25,Number(choice)||1));
+      let count=0;
+      for(let i=0;i<requested;i++){
+        if(!purchaseSingle(item))break;
+        count++;
+      }
+      if(!count){
+        showToast(nextFreeSlot(item)?'Not enough money':'Inventory full');
+        return;
+      }
+      updateAllShopPrices();updateMoney();renderInventory();markDirty();
+      showToast('Bought '+count+' × '+item+(count<requested?' (limit reached)':''));
     }
     for(const type of ['Dropper','Conveyor','Extractor','Turbine','HydraulicPump','Wire','Purifier','Furnace','CryoChamber','LaserCutter','AdvancedDropper','Splitter','Upgrader','ParticleAccelerator','SuperDropper','Sorter','ValueGate','Presser']) {
       $('buy'+type).addEventListener('click',()=>purchase(type));
     }
 
+    // Shop info buttons explain every machine without adding a grid inspector.
+    const shopHelp={
+      Dropper:['1 tile','Manual click: 0.5s; generates basic blobs. Powered: automatic production.','First free, then doubles.'],
+      AdvancedDropper:['1 tile','Creates mostly bronze blobs with a chance of silver. Can click or power.','Price doubles.'],
+      SuperDropper:['1 tile','Produces bronze, silver, gold and diamond blobs. Power improves odds and speed.','Price triples.'],
+      Conveyor:['1 tile','Moves blobs every 0.25s; automatically curves toward input sources.','Starts free, rises by $50 to $250.'],
+      Extractor:['1 tile','Collects and sells arriving blobs for their current value.','Starts free, then triples from $50.'],
+      Splitter:['Logic on conveyor','Routes blobs among two exits with random branching.','Always $10.'],
+      Sorter:['Logic on conveyor','Routes selected blob grade in a chosen direction; other grades continue forward.','Always $10.'],
+      ValueGate:['Logic on conveyor','Sends blobs above a custom value to an alternate direction.','Always $10.'],
+      Wire:['1 tile','Carries electricity between generators and powered machines.','Always $10.'],
+      Turbine:['1 tile','Generates one power charge every 2.5 seconds, with $5 upkeep per 10 seconds.','Price grows about 1.25×.'],
+      HydraulicPump:['2 × 3 tiles','Generates 15 power every 3 seconds across connected wires; $50 per burst.','Price doubles, capped at 999Qa.'],
+      Purifier:['1 tile','Improves passing blobs and adds a shiny effect.','Adds $25 per purchase.'],
+      Furnace:['1 tile','Melts bronze and improves blob value.','Price grows around 1.5×.'],
+      CryoChamber:['1 tile','Freezes and improves blobs; powered operation increases its multiplier.','Adds $50 per purchase.'],
+      LaserCutter:['3 tiles','Applies a laser upgrade to passing blobs, increasing their worth.','Adds $180 per purchase.'],
+      Upgrader:['1 tile','Upgrades each passing blob to the next quality tier.','Starts at $500.'],
+      Presser:['1 tile','Presses blobs into plates; melted materials receive a larger value boost.','Adds $50, capped at $750.'],
+      ParticleAccelerator:['3 × 3 tiles','Uses power to transform batches of five blobs into far more valuable outputs.','Starts at $1B.']
+    };
+    function showShopInfo(type){
+      const details=shopHelp[type]||['1 tile','A factory machine.','See shop for the next price.'];
+      $('shopInfoName').textContent=type.replace(/([a-z])([A-Z])/g,'$1 $2');
+      $('shopInfoArt').innerHTML=iconFor(type);
+      const inventoryCount=inventory.hotbar.reduce((n,x,i)=>n+(x===type?inventoryCosts.hotbar[i].length:0),0)+
+        inventory.backpack.filter(x=>x===type).length;
+      $('shopInfoText').textContent='Size: '+details[0]+'\n'+details[1]+'\nPricing: '+details[2]+
+        '\nNext price: '+formatPrice(prices[type])+'\nIn inventory: '+inventoryCount;
+      $('shopInfoPanel').classList.add('open');
+      $('closeShopInfo').focus();
+    }
+    function closeShopInfo(){
+      $('shopInfoPanel').classList.remove('open');
+    }
+    for(const card of shopCards){
+      const type=card.id.slice(3);
+      const button=document.createElement('button');
+      button.type='button';button.className='item-info';button.textContent='i';
+      button.setAttribute('aria-label','Information about '+type);
+      button.addEventListener('click',event=>{
+        event.preventDefault();event.stopPropagation();showShopInfo(type);
+      });
+      card.appendChild(button);
+    }
+    $('closeShopInfo').addEventListener('click',closeShopInfo);
+    $('shopInfoDone').addEventListener('click',closeShopInfo);
+    $('shopInfoPanel').addEventListener('click',event=>{if(event.target===$('shopInfoPanel'))closeShopInfo();});
     function sameLocation(a, b) { return !!a && !!b && a.zone === b.zone && a.index === b.index; }
     function moveOrSwap(from,to) {
       if(!from||!to||sameLocation(from,to)||!inventory[from.zone][from.index])return;
