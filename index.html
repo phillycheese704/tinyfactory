@@ -591,7 +591,7 @@
       const generators=[...placed.values()].filter(obj=>(obj.type==='Turbine'||obj.type==='HydraulicPump')&&obj.enabled).length;
       $('statPower').textContent=generators+' on / '+stats.powerGenerated+' total';
       $('statLiveBlobs').textContent=String(blobs.size);
-      $('statMachines').textContent=String([...placed.values()].filter(obj=>!['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj.type)).length);
+      $('statMachines').textContent=String([...placed.values()].filter(obj=>!['LaserPart','AcceleratorPart','HydraulicPart','MegaPart'].includes(obj.type)).length);
       $('statEarned').textContent='$'+formatAmount(stats.earned);
       $('statSpent').textContent='$'+formatAmount(stats.spent);
       $('statBlobs').textContent=stats.sold+' / '+stats.produced;
@@ -801,7 +801,7 @@
           hotbar:inventory.hotbar,backpack:inventory.backpack,
           hotbarCosts:inventoryCosts.hotbar.map(list=>list.map(String)),
           backpackCosts:inventoryCosts.backpack.map(String),
-          placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj.type)).map(([key,obj])=>[key,{
+          placed:[...placed].filter(([,obj])=>!['LaserPart','AcceleratorPart','HydraulicPart','MegaPart'].includes(obj.type)).map(([key,obj])=>[key,{
             type:obj.type,direction:obj.direction,enabled:obj.enabled,shape:obj.shape??0,
             manuallyRotated:!!obj.manuallyRotated,purchaseCost:String(obj.purchaseCost??0n),
             sortGrade:obj.sortGrade,sortDir:obj.sortDir,
@@ -918,6 +918,7 @@
           if(obj.type==='LaserCutter')placeLaserParts(key,obj);
           if(obj.type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
           if(obj.type==='HydraulicPump')placeHydraulicParts(key,obj);
+          if(megaDimensions[obj.type])placeMegaParts(key,obj);
         }
         const now=factoryNow();
         if(Array.isArray(data.blobs))for(const b of data.blobs.slice(0,2000)){
@@ -1381,12 +1382,40 @@
         wirePorts.set(key,{inputDir,outputDir:obj.direction,dirs:[inputDir,...outputs]});
       }
     }
-    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgrader','Presser']);
-    const logicTypes=new Set(['Splitter','Sorter','ValueGate']);
-    const canReceivePower=new Set(['Dropper','AdvancedDropper','SuperDropper','CryoChamber','ParticleAccelerator','AcceleratorPart']);
-    const canGeneratePower=new Set(['Turbine','HydraulicPump','HydraulicPart']);
+    const processorTypes=new Set(['Purifier','Furnace','CryoChamber','Upgrader','Presser',
+      'FusionChamber','Quantumifyier','Cloner','Infinifyer','Cleaner','QuantumComputer','Singularity']);
+    const logicTypes=new Set(['Splitter','Sorter','ValueGate','CounterGate','OverflowDrain','TimerGate','WireLift']);
+    const allDroppers=new Set(['Dropper','AdvancedDropper','SuperDropper',
+      'MightyDropper','RainbowDropper','TurboDropper','QuantumDropper','InfiDropper']);
+    const allConveyors=new Set(['Conveyor','AdvancedConveyor','HyperConveyor']);
+    const canReceivePower=new Set([...allDroppers,'CryoChamber','ParticleAccelerator','AcceleratorPart',
+      'Cloner','Quantumifyier','QuantumComputer']);
+    const canGeneratePower=new Set(['Turbine','HydraulicPump','HydraulicPart',
+      'FusionReactor','SolarField','Recycler','DysonSphere','MegaPart']);
     // A 2×3 Hydraulic Pump turns into a 3×2 footprint when rotated vertically.
     // The clicked tile remains the top-left anchor of the complete building.
+    const megaDimensions={
+      FusionChamber:[2,2],Quantumifyier:[5,5],Cloner:[1,3],Infinifyer:[4,4],
+      FusionReactor:[4,4],SolarField:[5,5],DysonSphere:[6,6]
+    };
+    function megaKeys(anchor,type,direction=1){
+      const dimensions=megaDimensions[type];
+      if(!dimensions)return [anchor];
+      const [r,c]=coords(anchor);
+      const rotate=direction%2===0&&dimensions[0]!==dimensions[1];
+      const rows=rotate?dimensions[1]:dimensions[0],cols=rotate?dimensions[0]:dimensions[1];
+      const result=[];
+      for(let dy=0;dy<rows;dy++)for(let dx=0;dx<cols;dx++){
+        const y=r+dy,x=c+dx;
+        result.push(y>=gridRows||x>=gridCols?null:toKey(y,x));
+      }
+      return result;
+    }
+    function placeMegaParts(anchor,obj){
+      for(const key of megaKeys(anchor,obj.type,obj.direction))
+        if(key&&key!==anchor)placed.set(key,{type:'MegaPart',parent:anchor,
+          direction:obj.direction,kind:obj.type});
+    }
     function hydraulicKeys(anchor,direction){
       const [r,c]=coords(anchor);
       const vertical=direction%2===0,rows=vertical?3:2,cols=vertical?2:3,keys=[];
@@ -1415,23 +1444,25 @@
     }
     function rootKey(key){
       const obj=placed.get(key);
-      return ['LaserPart','AcceleratorPart','HydraulicPart'].includes(obj?.type)?obj.parent:key;
+      return ['LaserPart','AcceleratorPart','HydraulicPart','MegaPart'].includes(obj?.type)?obj.parent:key;
     }
     function machineKeys(key,obj=placed.get(key)){
       return obj?.type==='LaserCutter'?laserKeys(key,obj.direction):
         obj?.type==='ParticleAccelerator'?acceleratorKeys(key):
-        obj?.type==='HydraulicPump'?hydraulicKeys(key,obj.direction):[key];
+        obj?.type==='HydraulicPump'?hydraulicKeys(key,obj.direction):
+        megaKeys(key,obj?.type,obj?.direction);
     }
     function canOccupy(key,type,direction,ignore=new Set()){
       const positions=type==='LaserCutter'?laserKeys(key,direction):
         type==='ParticleAccelerator'?acceleratorKeys(key):
-        type==='HydraulicPump'?hydraulicKeys(key,direction):[key];
+        type==='HydraulicPump'?hydraulicKeys(key,direction):
+        megaKeys(key,type,direction);
       // Logic blocks can attach only to bare conveyors, or stay on their
       // own tile during rotation. Other logic blocks are never valid bases.
       if(logicTypes.has(type))return positions.every(pos=>{
         if(!pos)return false;
         const current=placed.get(pos);
-        return current?.type==='Conveyor' ||
+        return allConveyors.has(current?.type) ||
           (ignore.has(pos)&&current?.type===type);
       });
       return positions.every(pos=>pos && (!placed.has(pos)||ignore.has(pos)));
@@ -1488,7 +1519,7 @@
       if(!obj)return;
       const next=(obj.direction+1)%4,oldKeys=machineKeys(root,obj);
       if(!canOccupy(root,obj.type,next,new Set(oldKeys))){showToast('Need 3 clear tiles to rotate');return;}
-      if(['LaserCutter','ParticleAccelerator','HydraulicPump'].includes(obj.type))
+      if(['LaserCutter','ParticleAccelerator','HydraulicPump',...Object.keys(megaDimensions)].includes(obj.type))
         for(const pos of oldKeys)if(pos!==root)placed.delete(pos);
       obj.direction=next;obj.manuallyRotated=true;
       if(obj.type==='Sorter')obj.sortDir=(obj.sortDir+1)%4;
@@ -1496,6 +1527,7 @@
       if(obj.type==='LaserCutter')placeLaserParts(root,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(root,obj);
       if(obj.type==='HydraulicPump')placeHydraulicParts(root,obj);
+      if(megaDimensions[obj.type])placeMegaParts(root,obj);
       wireLayoutsDirty=true;markDirty();
       renderGrid();
     }
@@ -1522,19 +1554,21 @@
       const old=machineKeys(root,obj),newPositions=
         obj.type==='LaserCutter'?laserKeys(to,obj.direction):
         obj.type==='ParticleAccelerator'?acceleratorKeys(to):
-        obj.type==='HydraulicPump'?hydraulicKeys(to,obj.direction):[to];
+        obj.type==='HydraulicPump'?hydraulicKeys(to,obj.direction):
+        megaKeys(to,obj.type,obj.direction);
       for(const pos of old)placed.delete(pos);
       placed.set(to,obj);
       if(obj.type==='LaserCutter')placeLaserParts(to,obj);
       if(obj.type==='ParticleAccelerator')placeAcceleratorParts(to,obj);
       if(obj.type==='HydraulicPump')placeHydraulicParts(to,obj);
+      if(megaDimensions[obj.type])placeMegaParts(to,obj);
       const translations=new Map(old.map((key,i)=>[key,newPositions[i]]));
       for(const blob of blobs.values())if(translations.has(blob.key))blob.key=translations.get(blob.key);
       wireLayoutsDirty=true;markDirty();renderGrid();renderBlobs();return true;
     }
     function isBeltTile(key){
       const type=key&&placed.get(key)?.type;
-      return type==='Conveyor'||logicTypes.has(type);
+      return allConveyors.has(type)||logicTypes.has(type);
     }
     function beltExitDirs(obj){
       if(!obj)return [];
@@ -1745,7 +1779,7 @@
     function footprintKeys(key,type){
       return type==='LaserCutter'?laserKeys(key,1):
         type==='ParticleAccelerator'?acceleratorKeys(key):
-        type==='HydraulicPump'?hydraulicKeys(key,1):[key];
+        type==='HydraulicPump'?hydraulicKeys(key,1):megaKeys(key,type,1);
     }
     function showPlacementPreview(index,typeOverride=null){
       const type=typeOverride??(selectedHotbar!==null?inventory.hotbar[selectedHotbar]:null);
@@ -1820,7 +1854,7 @@
       }
       $('factoryGrid').querySelectorAll('.grid-cell').forEach((cell,index) => {
         const key=cellKey(index), obj=placed.get(key);
-        const parentMachine=obj?.type==='HydraulicPart'?placed.get(obj.parent):null;
+        const parentMachine=['HydraulicPart','MegaPart'].includes(obj?.type)?placed.get(obj.parent):null;
         const isEnabled=parentMachine?parentMachine.enabled:obj?.enabled;
         const powerCount=obj?.charges?.filter(exp=>exp>now).length||0;
         const powered=!!obj && (powerCount>0 || obj.poweredUntil>now || obj.wireUntil>now);
@@ -1861,7 +1895,7 @@
       const costs=inventoryCosts.hotbar[hotbarIndex];
       const cost=costs.pop() ?? 0n;
       const obj=machine(type,cost);
-      if(type==='Conveyor')obj.direction=suggestConveyorDirection(key);
+      if(allConveyors.has(type))obj.direction=suggestConveyorDirection(key);
       if(logicTypes.has(type)){
         obj.underConveyor=placed.get(key);
         obj.direction=obj.underConveyor.direction;
@@ -1872,6 +1906,7 @@
       if(type==='LaserCutter')placeLaserParts(key,obj);
       if(type==='ParticleAccelerator')placeAcceleratorParts(key,obj);
       if(type==='HydraulicPump')placeHydraulicParts(key,obj);
+      if(megaDimensions[type])placeMegaParts(key,obj);
       wireLayoutsDirty=true;
       if(!costs.length) inventory.hotbar[hotbarIndex]=null;
       // Keep a partial stack selected so repeated placement works without retapping.
