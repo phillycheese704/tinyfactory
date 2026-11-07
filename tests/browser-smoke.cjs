@@ -139,7 +139,7 @@ async function run(){
           const r=el.getBoundingClientRect();return [r.left,r.top,r.width,r.height];
         };
         const hudBefore=hud.map(rect);
-        const zoom=()=>Number(board.style.transform.match(/scale\\(([^)]+)\\)/)?.[1]||1);
+        const zoom=()=>Number(board.style.transform.match(/scale\(([^)]+)\)/)?.[1]||1);
         const touch=(type,id,x,y)=>board.dispatchEvent(new PointerEvent(type,{
           bubbles:true,cancelable:true,pointerId:id,pointerType:'touch',
           button:0,clientX:x,clientY:y
@@ -187,7 +187,7 @@ async function run(){
       assert(camera.hudFixed,'Zoom and pan must not move shop, inventory or status UI');
       await page.keyboard.press('0');
       assert.match(await page.locator('#factoryGrid').getAttribute('style'),
-        /translate\\(0px, 0px\\) scale\\(1\\)/,'0 must reset the camera');
+        /translate\(0px, 0px\) scale\(1\)/,'0 must reset the camera');
       if(profile.gamepad){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
