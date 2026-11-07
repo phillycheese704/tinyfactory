@@ -3049,7 +3049,7 @@
       }
       return delivered;
     }
-    function deliverTurbinePower(root,now){
+    function deliverTurbinePower(root,now,amount=1){
       const source=placed.get(root);
       if(source?.type!=='Turbine')return 0;
       let start=null;
@@ -3075,20 +3075,21 @@
       }
       if(!target)return 0;
       target.charges=(target.charges||[]).filter(t=>t>now);
-      if(target.charges.length>=100)return 0;
-      target.charges.push(now+3000);
+      const units=Math.max(0,Math.min(100-target.charges.length,amount));
+      if(!units)return 0;
+      for(let i=0;i<units;i++)target.charges.push(now+3000);
       target.poweredUntil=now+3000;target.pulseUntil=now+260;
       for(let at=lastWire;at!==null;at=previous.get(at)){
         const wire=placed.get(at);
         if(wire)wire.wireUntil=now+3000;
       }
-      return 1;
+      return units;
     }
     function deliverPower(sourceKey,now,amount=1){
       rebuildWireLayouts();
       const sourceRoot=rootKey(sourceKey),source=placed.get(sourceRoot);
       if(!source || !canGeneratePower.has(source.type) || source.type==='HydraulicPart')return 0;
-      if(source.type==='Turbine')return deliverTurbinePower(sourceRoot,now);
+      if(source.type==='Turbine')return deliverTurbinePower(sourceRoot,now,amount);
       if(['HydraulicPump','FusionReactor','SolarField','Recycler','DysonSphere'].includes(source.type))
         return deliverHydraulicPower(sourceRoot,now,amount);
       const queue=[],visited=new Set(),targets=new Map();
@@ -3226,7 +3227,7 @@
             }else markDirty();
           }
         }
-        if(obj.type==='Wire'&&obj.wireUntil>0&&obj.wireUntil<=now){
+        if(['Wire','WireLift'].includes(obj.type)&&obj.wireUntil>0&&obj.wireUntil<=now){
           obj.wireUntil=0;mustRender=true;
         }
       }
