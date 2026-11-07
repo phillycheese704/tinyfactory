@@ -185,20 +185,35 @@ async function run(){
         'Drag must pan by the finger delta');
       assert(camera.pinchZoomed,'Pinch must zoom');
       assert(camera.hudFixed,'Zoom and pan must not move shop, inventory or status UI');
-      await page.evaluate(()=>{
-        window.__cameraTestKey=null;
-        document.addEventListener('keydown',event=>{
-          window.__cameraTestKey={key:event.key,target:event.target?.id||event.target?.tagName};
-        },{capture:true,once:true});
+      // Even a huge drag must not move the board fully out of reach.
+      const reachable=await page.evaluate(()=>{
+        const board=document.querySelector('#factoryGrid');
+        const r=board.getBoundingClientRect();
+        const x=r.left+50,y=r.top+50;
+        const touch=(type,px,py)=>board.dispatchEvent(new PointerEvent(type,{
+          bubbles:true,cancelable:true,pointerId:105,pointerType:'touch',
+          button:0,clientX:px,clientY:py
+        }));
+        const safeTop=Math.max(
+          document.querySelector('.topbar').getBoundingClientRect().bottom,
+          document.querySelector('#balance').getBoundingClientRect().bottom)+8;
+        const safeBottom=document.querySelector('.hotbar-wrap').getBoundingClientRect().top-34;
+        const visible=rect=>rect.right>48&&rect.left<window.innerWidth-48&&
+          rect.bottom>safeTop+48&&rect.top<safeBottom-48;
+        touch('pointerdown',x,y);
+        touch('pointermove',x+10000,y+10000);
+        const downRight=visible(board.getBoundingClientRect());
+        touch('pointermove',x-10000,y-10000);
+        const upLeft=visible(board.getBoundingClientRect());
+        touch('pointerup',x-10000,y-10000);
+        return downRight&&upLeft;
       });
+      assert(reachable,'Large drags must not lose the board off-screen');
       await page.keyboard.press('0');
-      const keyboard=await page.evaluate(()=>({
-        style:document.querySelector('#factoryGrid').getAttribute('style'),
-        active:document.activeElement?.id||document.activeElement?.tagName,
-        received:window.__cameraTestKey
-      }));
-      assert.match(keyboard.style,/translate\(0px, 0px\) scale\(1\)/,
-        '0 must reset the camera: '+JSON.stringify(keyboard));
+      // WebKit normalises translate(0px, 0px) to translate(0px).
+      assert.match(await page.locator('#factoryGrid').getAttribute('style'),
+        /transform:\s*translate\(0px(?:,\s*0px)?\) scale\(1\)/,
+        '0 must reset the camera');
       if(profile.gamepad){
         await page.locator('#gamepadStatus').waitFor({state:'visible',timeout:4000});
         assert.match(await page.locator('#gamepadStatus').innerText(),/Controller ready/);
