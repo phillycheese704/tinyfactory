@@ -418,7 +418,18 @@
     .machine-icon.rainbowdropper .model-energy{animation-duration:.8s}
     .machine-icon.turbodropper .model-piston{animation-duration:.42s}
     .machine-icon.infidropper .model-piston{animation-duration:.24s}
+    .machine-icon.off .model-rotor,.machine-icon.off .model-rotor-reverse,
+    .machine-icon.off .model-piston,.machine-icon.off .model-portal,
+    .machine-icon.off .model-flow,.machine-icon.off .model-arc{animation-play-state:paused;opacity:.48}
     .machine-icon .model-arc:not(.powered){opacity:.5}
+    .layer:not(.is-open) .machine-icon *, .backpack-layer:not(.is-open) .machine-icon *{
+      animation-play-state:paused!important;
+    }
+    body[data-factory-theme="midnight"] .brand{color:#edf9ff;text-shadow:0 2px 4px #092037}
+    body[data-graphics-quality="minimal"] .machine-icon .machine-detail{display:none}
+    body[data-graphics-quality="minimal"] .world{
+      background-image:linear-gradient(155deg,#f2f6f7,#c6d8e3);
+    }
     body.simulation-paused .machine-icon,body.simulation-paused .machine-icon *,
     body.simulation-paused .blob,body.simulation-paused .blob *,
     body.simulation-paused .blob::before,body.simulation-paused .blob::after{
@@ -1650,7 +1661,7 @@ function renderMachineFrame(type,inside,classes=''){
     <circle cx="55" cy="46" r="2" fill="#547080" stroke="#dfeeff" stroke-width="1"/>`;
   return frame(`${plating}${model}`,`${powered?'powered ':''}${pulsing?'is-pulsing ':''}${enabled?'':'off'}`);
 }
-    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0, autoWireDirs = null) {
+    function iconFor(type, direction = 1, powered = false, enabled = true, incoming = null, pulsing = false, shape = 0, autoWireDirs = null, megaKind = null, tileParity = 0) {
       if (!type) return '';
       const stroke = 'stroke="#292929" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"';
       const frame = (inside, classes='') => renderMachineFrame(type,inside,classes);
@@ -1798,9 +1809,29 @@ function renderMachineFrame(type,inside,classes=''){
       }
       if(newMachineCategories && Object.values(newMachineCategories).some(names=>names.includes(type)))
         return advancedModel(type,direction,incoming,powered,enabled,pulsing,frame);
-      if(type==='MegaPart')return frame(`<rect x="3" y="4" width="58" height="49" rx="7" fill="#bfddea" stroke="#45637b" stroke-width="3"/>
-        <path d="M5 16h54M5 41h54M18 4v49M46 4v49" stroke="#7ea4c2" stroke-width="2.4"/>
-        <circle cx="32" cy="28" r="6" fill="#eee9ff" stroke="#526f9b" stroke-width="2"/>`);
+      if(type==='MegaPart'){
+        const materials={
+          FusionChamber:['#e3b49c','#975b4d'],Quantumifyier:['#b6b7ed','#6567ad'],
+          Cloner:['#a7d9e5','#5c9aac'],Infinifyer:['#c7b0e8','#7b5aab'],
+          FusionReactor:['#ebc89e','#b47652'],SolarField:['#86b9e9','#2b609b'],
+          DysonSphere:['#e7c98a','#a28a4c']
+        };
+        const [base,edge]=materials[megaKind]||['#bdcfde','#6b819c'];
+        const plates=megaKind==='SolarField'?
+          '<rect x="7" y="7" width="50" height="40" rx="3" fill="#174d84" stroke="#a2deff" stroke-width="1"/>'+
+          [0,1,2].map(r=>[0,1,2].map(c=>'<rect x="'+(10+c*15)+'" y="'+(10+r*12)+'" width="12" height="10" rx="1" fill="'+((r+c)%2?'#86d3ff':'#397bad')+'" stroke="#1d588d"/>').join('')).join(''):
+          megaKind==='DysonSphere'?
+          '<circle cx="32" cy="28" r="22" fill="#ffde93" stroke="#9d7c32" stroke-width="3"/>'+
+          '<path class="model-rotor" d="M9 28h46M32 5v46" stroke="#fff5d2" stroke-width="4"/>':
+          '<path d="M5 28h54M32 5v47" stroke="'+edge+'" stroke-width="4"/>'+
+          '<rect x="13" y="13" width="38" height="30" rx="5" fill="#ffffff55" stroke="#ffffff75" stroke-width="1.5"/>'+
+          '<circle class="model-energy" cx="32" cy="28" r="9" fill="'+edge+'" stroke="#fff" stroke-width="2"/>';
+        return frame(`<rect x="2" y="2" width="60" height="52" rx="4" fill="${edge}" stroke="#26384a" stroke-width="2"/>
+          <rect x="5" y="5" width="54" height="46" rx="3" fill="${base}" stroke="#ffffff88" stroke-width="2"/>
+          <g class="mega-plating" transform="translate(0 ${tileParity?1:0})">${plates}</g>
+          <circle cx="7" cy="7" r="2" fill="#fff"/><circle cx="57" cy="48" r="2" fill="#33495d"/>
+          <path d="M8 45h48M8 10h48" stroke="#ffffff88" stroke-width="1.5"/>`);
+      }
       if (type === 'Wire' && shape > 0) {
         const outputs=shape===2?[0,1,2,3]:[direction,(direction+1)%4];
         const input=incoming==null?(direction+2)%4:incoming;
@@ -2447,7 +2478,7 @@ function renderMachineFrame(type,inside,classes=''){
         const powered=!!obj && (powerCount>0 || obj.poweredUntil>now || obj.wireUntil>now);
         const ports=obj?.type==='Wire' ? wirePorts.get(key) : null;
         const output=ports?.outputDir??obj?.direction;
-        const incoming=obj?.type==='Conveyor' ? incomingFor(key,obj.direction) : ports?.inputDir??null;
+        const incoming=allConveyors.has(obj?.type)?incomingFor(key,obj.direction):ports?.inputDir??null;
         const autoWireDirs=obj?.type==='Wire'&&!obj.manuallyRotated?wireConnections(key):null;
         const root=rootKey(key),acc=placed.get(root);
         const label=obj?.type==='ParticleAccelerator'?acc.pending.length?acc.pending.length+' queued':acc.batch.length+'/5'+(acc.batch.length===5?' ⏱':''):
@@ -2455,12 +2486,15 @@ function renderMachineFrame(type,inside,classes=''){
           obj?.type==='CounterGate'?'1/'+(obj.counterN||3):
           obj?.type==='TimerGate'?(obj.timerSeconds||3)+'s':
           obj?.type==='Splitter'?(obj.branchChance??50)+'%':'';
-        const signature=obj ? [obj.type,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
+        const signature=obj ? [obj.type,obj.kind,obj.direction,obj.shape,isEnabled,output,incoming,autoWireDirs?.join(','),powered,powerCount,rotateActive,moveFrom===key,label].join('|') : '';
         if(cell.dataset.signature!==signature) {
-          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape,autoWireDirs)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
+          cell.innerHTML=obj?iconFor(obj.type,output,powered,isEnabled,incoming,false,obj.shape,autoWireDirs,
+            obj.kind??null, (Math.floor(index/gridCols)+index%gridCols)%2)+(rotateActive&&obj.type!=='Conveyor'? `<span class="direction-mark">${['↑','→','↓','←'][output]}</span>`:'')+(powerCount?`<span class="power-mark">⚡${powerCount}</span>`:'')+(label?`<span class="machine-status">${label}</span>`:''):'';
           cell.dataset.signature=signature;
         }
         cell.classList.toggle('occupied',!!obj);
+        cell.dataset.factoryMachine=obj?.type??'';
+        cell.dataset.visualKind=obj?.kind??obj?.type??'';
         cell.classList.toggle('move-source',moveFrom===key);
         cell.classList.toggle('bottleneck-warn',bottleneckVisible&&(blocked.get(key)||0)>=2000&&(blocked.get(key)||0)<5000);
         cell.classList.toggle('bottleneck-severe',bottleneckVisible&&(blocked.get(key)||0)>=5000);
@@ -3053,13 +3087,28 @@ function renderMachineFrame(type,inside,classes=''){
         el.classList.toggle('icy',blob.color==='blue');
         el.classList.toggle('rainbow',blob.grade==='rainbow');
         el.classList.toggle('quantum',blob.grade==='quantum');
+        el.dataset.grade=blob.grade||'normal';
+        el.dataset.enhanced=String(!!blob.quantumEnhanced);
+        el.dataset.infi=String(!!blob.infi);
         el.classList.toggle('ember',!!blob.ember);
         el.classList.toggle('plate',!!blob.plate);
         el.classList.toggle('lasered',!!blob.neon);
         const dot=el.querySelector('.blob-dot');
         const color=palette[blob.color]||palette.black;
-        dot.style.background=color;
-        dot.style.boxShadow=blob.neon?'0 0 8px 3px '+color:blob.ember?'0 0 6px #ff8e42':'1px 2px 0 #858585';
+        const materials={
+          normal:'radial-gradient(circle at 28% 20%,#bac5d0,#424b54 31%,#111620 85%)',
+          bronze:'radial-gradient(circle at 28% 18%,#ffe7c6,#c88c54 31%,#6d3a27 88%)',
+          silver:'radial-gradient(circle at 25% 18%,#fff,#d2e1f2 33%,#778ea7 90%)',
+          gold:'radial-gradient(circle at 25% 19%,#fffde6,#ffdf63 33%,#cb771e 85%)',
+          diamond:'linear-gradient(130deg,#fff 4%,#8be6ff 30%,#427ac9 65%,#c7ffff)',
+          rainbow:'conic-gradient(from 35deg,#f479af,#f8df6e,#a3f4b4,#7ec7fa,#a896eb,#f479af)',
+          quantum:'radial-gradient(circle at 30% 25%,#fafaff,#aaaaff 30%,#583fa1 70%,#221e64)'
+        };
+        dot.style.background=materials[blob.grade]||
+          'radial-gradient(circle at 28% 20%,#ffffffcc,'+color+' 35%,#18253a 90%)';
+        dot.style.boxShadow=blob.neon?'0 0 8px 3px '+color+', inset 1px 2px 2px #fff':
+          blob.ember?'0 0 6px #ff8e42, inset 1px 2px 2px #fff':
+          'inset 1px 2px 2px #ffffff90,inset -2px -2px 3px #14243b90,1px 3px 3px #17283a79';
         el.style.transitionDuration=Math.max(15,movementDelay(blob)*.75)+'ms';
         el.style.left=((col+.5)/gridCols*100)+'%';
         el.style.top=((row+.5)/gridRows*100)+'%';
