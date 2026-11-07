@@ -9,8 +9,7 @@ manage power, expand to more factory pages, and grow your production line.
 
 | Action | Mouse / keyboard | Touch | Controller |
 | --- | --- | --- | --- |
-| Place or select | Click a tile | Tap a tile | A |
-| Navigate tiles | Click a tile | Tap a tile | D-pad / left stick and A to interact |
+| Place or select | Click a tile | Tap a tile | D-pad / left stick, then A |
 | Rotate / move / delete tools | `R` / `M` / `X` | Inventory bar | X to rotate |
 | Pause | `P` | Pause button | Start |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` | Action bar | — |
