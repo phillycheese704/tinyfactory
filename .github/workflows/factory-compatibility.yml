@@ -35,3 +35,9 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Run five browser profiles
         run: node tests/browser-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: machine-madness-cross-platform-screenshots
+          path: test-results/screenshots/*.png
+          if-no-files-found: ignore
