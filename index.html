@@ -145,7 +145,7 @@
     @keyframes reset-pop {0%,100%{transform:translateX(-50%) rotate(-1deg)}30%{transform:translateX(-50%) rotate(13deg) scale(1.15)}60%{transform:translateX(-50%) rotate(-12deg) scale(.92)}}
     @keyframes hold-progress {to{transform:scaleX(1)}}
     .blob-layer { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:visible; }
-    .blob { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; justify-content:center; width:24px;height:24px; transition:left .27s linear,top .27s linear; will-change:left,top; }
+    .blob { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; justify-content:center; width:24px;height:24px; transition:left .15s linear,top .15s linear; will-change:left,top; }
     .blob-dot { width:clamp(7px, .9vw, 13px);height:clamp(7px, .9vw, 13px);background:#202020;border-radius:48% 53% 50% 45%;border:1px solid #000;box-shadow:1px 2px 0 #858585;animation:glow 1.1s ease-in-out infinite; }
     .blob-worth { position:absolute;bottom:calc(50% + 6px);left:50%;transform:translateX(-50%);color:#147b3d;font-size:clamp(8px,.76vw,11px);font-weight:900;text-shadow:-1px -1px white,1px 1px white,-1px 1px white,1px -1px white;white-space:nowrap; }
     .blob.collecting { opacity:.35;transition:left .27s linear,top .27s linear,opacity .27s linear; }
@@ -2422,6 +2422,7 @@
         const color=palette[blob.color]||palette.black;
         dot.style.background=color;
         dot.style.boxShadow=blob.neon?'0 0 8px 3px '+color:blob.ember?'0 0 6px #ff8e42':'1px 2px 0 #858585';
+        el.style.transitionDuration=Math.max(15,movementDelay(blob)*.75)+'ms';
         el.style.left=((col+.5)/gridCols*100)+'%';
         el.style.top=((row+.5)/gridRows*100)+'%';
       }
@@ -2551,8 +2552,7 @@
         const occupied=next=>[...blobs.values()].some(b=>b.key===next&&b.id!==blob.id);
         let first=forward;
         if(obj.type==='CounterGate'){
-          obj.counter=(obj.counter||0)+1;markDirty();
-          if(obj.counter%Math.max(1,obj.counterN||3)===0)first=side;
+          if((obj.counter||0)%Math.max(1,obj.counterN||3)===0)first=side;
         }else if(obj.type==='OverflowDrain'){
           const next=neighbor(blob.key,forward);
           if(!next||!canFeedConveyor(blob.key,next,forward)||occupied(next))first=side;
@@ -2600,6 +2600,84 @@
       }
       return null;
     }
+    function movementDelay(blob){
+      const machine=placed.get(blob.key);
+      const mult=machine?.type==='AdvancedConveyor'?1.5:
+        machine?.type==='HyperConveyor'?4:1;
+      return 250/(mult*(hasSupercharger()&&allConveyors.has(machine?.type)?5:1));
+    }
+    function handleBlobArrival(blob,key,now){
+      const tile=placed.get(key),root=rootKey(key),machine=placed.get(root);
+      if(!machine)return false;
+      const type=machine.type;
+      if(type==='CounterGate'){machine.counter=(machine.counter||0)+1;markDirty();}
+      if(type==='Recycler'){
+        const power={normal:1,bronze:1,silver:4,gold:20,
+          diamond:20,rainbow:100,quantum:250}[blob.grade]??1;
+        const amount=power*(hasSupercharger()?5:1);
+        deliverPower(root,now,amount);
+        stats.powerGenerated+=amount;
+        blobs.delete(blob.id);return true;
+      }
+      if(type==='DimensionalRift'){
+        blob.worth*=100n;blob.state='collecting';blob.collectAt=now+300;
+        if(Math.random()<.5){
+          const [r,c]=coords(root);
+          for(const [id,other] of [...blobs]){
+            if(id===blob.id||other.state==='collecting')continue;
+            const [rr,cc]=coords(other.key);
+            if(Math.abs(rr-r)<3&&Math.abs(cc-c)<3){
+              other.worth*=100n;other.state='collecting';other.collectAt=now+300;
+            }
+          }
+        }
+        return false;
+      }
+      if(type==='FusionChamber'){
+        machine.batch.push({...blob});
+        if(machine.batch.length>=2){
+          const [one,two]=machine.batch.splice(0,2);
+          queueClone(machine,{...one,worth:one.worth+two.worth},one.worth+two.worth);
+        }
+        blobs.delete(blob.id);return true;
+      }
+      if(type==='Singularity'){
+        machine.batch.push({...blob,releaseAt:now+10000});
+        blobs.delete(blob.id);return true;
+      }
+      if(type==='Cleaner'){blob.cleaned=true;return false;}
+      if(type==='Upgrader'){upgradeBlob(blob);}
+      else if(type==='Purifier'){addBlobValue(blob,1n);blob.shiny=true;}
+      else if(type==='Furnace'){
+        multiplyBlob(blob,blob.grade==='bronze'?120:130);
+        blob.ember=true;if(blob.grade==='bronze')blob.melted=true;
+      }else if(type==='Presser'){multiplyBlob(blob,blob.melted?250:145);blob.plate=true;}
+      else if(type==='CryoChamber'){
+        const power=Math.min(100,powerLevel(machine,now));
+        multiplyBlob(blob,power?190+Math.round((power-1)*10/99):175);
+        blob.color='blue';
+      }else if(type==='LaserCutter'){
+        multiplyBlob(blob,blob.grade==='diamond'?300:200);
+        blob.neon=true;if(blob.color==='black')blob.color='red';
+      }else if(type==='Quantumifyier'){
+        multiplyBlob(blob,500);
+        if(Math.random()<.05)queueClone(machine,blob);
+      }else if(type==='Cloner'){
+        queueClone(machine,blob,powerLevel(machine,now)>0?blob.worth*95n/100n:blob.worth/2n);
+      }else if(type==='Infinifyer'){
+        multiplyBlob(blob,2500);
+        queueClone(machine,blob,blob.worth,4);
+      }else if(type==='QuantumComputer'){
+        multiplyBlob(blob,5000);
+        blob.quantumEnhanced=true;
+        queueClone(machine,blob);
+      }
+      if(type==='Upgrader'||type==='Purifier'||type==='Furnace'||type==='Presser'||
+        type==='CryoChamber'||type==='LaserCutter'||type==='Quantumifyier'||type==='Cloner'||
+        type==='Infinifyer'||type==='QuantumComputer')
+        machine.pulseUntil=now+350;
+      return false;
+    }
     function moveBlobs(now){
       const occupied=new Set([...blobs.values()].map(b=>b.key));
       let changed=false;
@@ -2612,7 +2690,7 @@
           }
           continue;
         }
-        if(now-blob.arrivedAt<MOVE_MS-25)continue;
+        if(now-blob.arrivedAt<Math.max(12,movementDelay(blob)-12))continue;
         const next=blobDestination(blob);
         if(!next||occupied.has(next)){
           if(blob.blockedSince===undefined)blob.blockedSince=now;
@@ -2636,37 +2714,29 @@
         const reached=placed.get(next);
         if(processorTypes.has(reached?.type)||['LaserCutter','LaserPart','AcceleratorPart','ParticleAccelerator'].includes(reached?.type))
           stats.processed++;
-        if(reached?.type==='Upgrader'){
-          upgradeBlob(blob);
-          reached.pulseUntil=now+350;
-        } else if(reached?.type==='Purifier'){
-          blob.worth+=1n;blob.shiny=true;reached.pulseUntil=now+350;
-        } else if(reached?.type==='Furnace'){
-          if(blob.grade==='bronze'){
-            blob.worth=(blob.worth*12n+5n)/10n;
-            blob.melted=true;blob.ember=true;
-          }else{
-            blob.worth=(blob.worth*13n+5n)/10n;
-            blob.ember=true;
-          }
-          reached.pulseUntil=now+350;
-        } else if(reached?.type==='Presser'){
-          blob.worth=blob.melted?(blob.worth*5n+1n)/2n:(blob.worth*145n+50n)/100n;
-          blob.plate=true;reached.pulseUntil=now+350;
-        } else if(reached?.type==='CryoChamber'){
-          const power=Math.min(100,reached.charges?.filter(t=>t>now).length||0);
-          const multiplier=power?190+Math.round((power-1)*10/99):175;
-          blob.worth=(blob.worth*BigInt(multiplier)+50n)/100n;
-          blob.color='blue';reached.pulseUntil=now+350;
-        } else if(reached?.type==='LaserCutter'){
-          blob.worth*=blob.grade==='diamond'?3n:2n;blob.neon=true;
-          if(blob.color==='black')blob.color='red';
-          reached.pulseUntil=now+350;
-        }
-        if(reached?.type==='Extractor'){
+        if(handleBlobArrival(blob,next,now)){occupied.delete(next);changed=true;continue;}
+        if(reached?.type==='Extractor'||reached?.type==='DimensionalRift'){
           blob.state='collecting';blob.collectAt=now+350;
           reached.pulseUntil=now+350;
         }
+      }
+      // Release cloned, fused and time-delayed products only when their
+      // output tile is free. Never overwrite another blob or lose output.
+      for(const [key,obj] of placed){
+        if(obj.type==='Singularity'&&obj.batch.length){
+          const ready=obj.batch.filter(b=>b.releaseAt<=now);
+          obj.batch=obj.batch.filter(b=>b.releaseAt>now);
+          for(const b of ready){
+            multiplyBlob(b,100000);
+            queueClone(obj,b,b.worth,2);
+          }
+        }
+        if(!obj.pending?.length||!(megaProcessors.has(obj.type)||obj.type==='QuantumComputer'||obj.type==='Singularity'))continue;
+        const output=megaProcessors.has(obj.type)?megaPorts(key,obj)?.exit:key;
+        if(!output||occupied.has(output))continue;
+        const pending=obj.pending.shift(),id=nextBlobId++;
+        blobs.set(id,{...pending,id,key:output,arrivedAt:now,collectAt:0,fromKey:key});
+        stats.produced++;occupied.add(output);changed=true;
       }
       // Drain at most one finished batch blob per conveyor movement step.
       for(const [key,obj] of placed)if(obj.type==='ParticleAccelerator'&&obj.pending.length&&acceleratorReady(key)&&powerLevel(obj,now)>0){
@@ -2679,7 +2749,7 @@
         }
       }
       if(changed)markDirty();
-      renderBlobs();
+      if(changed)renderBlobs();
     }
     // Turbines emit one short-lived charge. Separate pulses accumulate up to
     // 100 per machine; each charge expires three seconds after being produced.
@@ -2802,7 +2872,7 @@
       }
       lastStatsTick=now;
       // Clear output tiles before attempting new drops at the maximum rate.
-      if(now-lastMovementAt>=MOVE_MS){lastMovementAt=now;moveBlobs(now);}
+      if(now-lastMovementAt>=25){lastMovementAt=now;moveBlobs(now);}
       for(const [key,obj] of placed){
         if(obj.type==='HydraulicPump'&&obj.enabled){
           if(now-obj.lastPower>=3000){
@@ -2873,7 +2943,7 @@
       }
       if(mustRender)renderGrid();
     }
-    setInterval(tickFactory,50);
+    setInterval(tickFactory,25);
     // Revert the indicator to a flat line when the last transaction ages out.
     setInterval(refreshMoneyTrend,1000);
 
