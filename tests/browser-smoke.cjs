@@ -81,7 +81,16 @@ async function run(){
       assert(await page.locator('#buyCounterGate').isVisible());
       assert(await page.locator('#buyOverflowDrain').isVisible());
       assert(await page.locator('#buyTimerGate').isVisible());
-      await page.waitForTimeout(350);
+      // WebKit can delay compositing backdrop-filter overlays after a style
+      // change; wait for the *rendered* panel rather than a fixed sleep.
+      await page.waitForFunction(()=>{
+        const layer=document.getElementById('shopLayer');
+        const panel=document.getElementById('shopPanel');
+        return layer.classList.contains('is-open')&&
+          getComputedStyle(layer).visibility==='visible'&&
+          Number(getComputedStyle(panel).opacity)>.99;
+      },null,{timeout:5000});
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-shop.png')});
       await page.locator('#shopFilter').selectOption('all');
       const modelChecks=await page.evaluate(()=>{
@@ -100,6 +109,10 @@ async function run(){
       });
       assert(modelChecks.every(item=>item.valid),'Advanced machine models must render with detail on every browser');
       assert.equal(new Set(modelChecks.map(item=>item.artwork)).size,24,'All 24 models must be distinct');
+      await page.locator('#shopTabs [data-tab="Production"]').click();
+      await page.waitForTimeout(400);
+      await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-new-machines.png')});
+      await page.locator('#shopTabs [data-tab="All"]').click();
       await page.locator('#buyMightyDropper .item-info').click();
       assert(await page.locator('#shopInfoPanel').evaluate(el=>el.classList.contains('open')));
       await page.locator('#closeShopInfo').click();
