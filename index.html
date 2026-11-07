@@ -444,6 +444,8 @@
     body[data-graphics-quality="minimal"] .grid-cell.occupied{
       background:#fff9ef;box-shadow:inset 0 0 0 1px #c0c7c6;
     }
+    body[data-graphics-quality="minimal"] .machine-icon,
+    body[data-graphics-quality="minimal"] .blob,
     body[data-graphics-quality="minimal"] .machine-icon *,
     body[data-graphics-quality="minimal"] .blob *,
     body[data-graphics-quality="minimal"] .blob::before,
@@ -910,9 +912,11 @@
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const memory=Number(navigator.deviceMemory)||8;
       const cores=Number(navigator.hardwareConcurrency)||8;
+      const touch=typeof window.matchMedia==='function'&&
+        window.matchMedia('(pointer:coarse)').matches;
       const effective=graphicsQuality==='auto'?
         (reducedBySystem||memory<=2||cores<=2?'minimal':
-          (memory<=4||window.innerWidth<700?'balanced':'ultra')):graphicsQuality;
+          (memory<=4||touch||window.innerWidth<700?'balanced':'ultra')):graphicsQuality;
       document.body.dataset.graphicsQuality=effective;
       document.body.dataset.graphicsMotion=graphicsMotion==='system'?
         (reducedBySystem?'reduced':'full'):graphicsMotion;
@@ -1494,7 +1498,7 @@
     // Individual illustrated SVGs keep the animations working in iPad Safari.
 function renderMachineFrame(type,inside,classes=''){
   return `<svg viewBox="0 0 64 56" class="machine-icon ${type.toLowerCase()} ${classes}" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 48l5 5h47l4-5" fill="#31455955" stroke="#26384a55" stroke-width="1"/>
+    <path class="machine-depth" d="M4 48l5 5h47l4-5" fill="#31455955" stroke="#26384a55" stroke-width="1"/>
     ${inside}
     <g class="machine-detail" pointer-events="none">
       <path d="M8 12L12 8h8M44 8h8l4 4" fill="none" stroke="#fff" stroke-width="1.5" opacity=".5"/>
