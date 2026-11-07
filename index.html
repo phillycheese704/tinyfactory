@@ -50,6 +50,16 @@
     .close { flex: 0 0 auto; width: 44px; height: 44px; background: #fff; border: 2px solid #dd4141; border-radius: 11px 9px 12px 10px; color: #e03434; font: 900 27px/1 sans-serif; display: grid; place-items: center; cursor: pointer; transition: background .15s, transform .15s; }
     .close:hover { background: #ffeded; transform: rotate(5deg); }
     .items { padding: 28px clamp(20px,3.5vw,48px) 46px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: clamp(14px, 2.2vw, 26px); }
+    /* Clear, compact category dividers in All; each section is price-ordered. */
+    .items.is-grouped { row-gap: clamp(10px, 1.7vw, 18px); }
+    .shop-section-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 9px 12px; margin: 9px 0 0; border: 1.5px solid #b5cee2; border-left: 5px solid #5388b0; border-radius: 10px; background: #eef7ff; }
+    .shop-section-heading:first-child { margin-top: 0; }
+    .shop-section-heading[data-category="Production"] { background: #fff4d7; border-color: #f0d290; border-left-color: #c77d24; }
+    .shop-section-heading[data-category="Processing"] { background: #f5edff; border-color: #d7c1ef; border-left-color: #8c5cc1; }
+    .shop-section-heading[data-category="Transport"] { background: #eaf8ec; border-color: #bedfc4; border-left-color: #46955c; }
+    .shop-section-heading[data-category="Power"] { background: #eaf5ff; border-color: #bad7f0; border-left-color: #4b88b8; }
+    .shop-section-title { font: 900 15px/1.2 sans-serif; letter-spacing: .01em; }
+    .shop-section-count { margin-left: auto; padding: 4px 8px; border: 1px solid #0002; border-radius: 8px; background: #fff9; font: 800 11px/1 sans-serif; white-space: nowrap; }
     .item { border: 2.5px solid var(--ink); border-radius: 16px 12px 19px 13px / 13px 18px 13px 16px; box-shadow: 3px 4px 0 var(--ink); background: white; min-height: 180px; padding: 18px; text-align: left; display: flex; flex-direction: column; align-items: flex-start; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease, background .15s ease; }
     .item:hover { transform: translateY(-3px) rotate(-.5deg); box-shadow: 4px 6px 0 var(--ink); background: #fffaf0; }
     .item:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
@@ -1116,12 +1126,9 @@
     function parseMoney(value,fallback=0n){
       try{return BigInt(value);}catch{return fallback;}
     }
-    // Keep the shop's All tab sorted by the CURRENT next-purchase price.
-    // Equal-price items retain their original shop order, and category tabs
-    // keep the familiar order instead of jumping around.
+    // Advanced shop cards are created once so purchases and info controls
+    // remain attached when cards move between price-sorted categories.
     const newMachineCategories={"Production":["MightyDropper","RainbowDropper","TurboDropper","QuantumDropper","InfiDropper"],"Processing":["FusionChamber","Quantumifyier","Cloner","Infinifyer","Cleaner","QuantumComputer","Singularity","DimensionalRift"],"Transport":["AdvancedConveyor","HyperConveyor","WireLift","CounterGate","OverflowDrain","TimerGate"],"Power":["FusionReactor","SolarField","Recycler","DysonSphere","Supercharger"]};
-    // Generate shop entries for advanced machinery, retaining the same buy and
-    // info controls, search and filters as existing shop cards.
     for(const [category,names] of Object.entries(newMachineCategories)){
       for(const type of names){
         const card=document.createElement('div');
@@ -1137,37 +1144,73 @@
         $('shopItems').appendChild(card);
       }
     }
-    const shopCards = [...document.querySelectorAll('#shopItems .item')];
-    let activeShopCategory = 'All';
+    const shopCards=[...document.querySelectorAll('#shopItems .item')];
+    const shopEntries=shopCards.map((item,index)=>({item,index,type:item.id.slice(3)}));
+    const shopCategories=['Production','Processing','Transport','Power'];
+    const shopHeadings=new Map(shopCategories.map(category=>{
+      const heading=document.createElement('div');
+      heading.className='shop-section-heading';
+      heading.dataset.category=category;
+      heading.setAttribute('role','heading');
+      heading.setAttribute('aria-level','3');
+      const title=document.createElement('span');
+      title.className='shop-section-title';title.textContent=category;
+      const count=document.createElement('span');
+      count.className='shop-section-count';
+      heading.append(title,count);
+      return [category,{heading,count}];
+    }));
+    let activeShopCategory='All';
+    function compareShopPrices(a,b){
+      // BigInt comparisons preserve the exact ordering of late-game prices,
+      // even when a price is far above Number.MAX_SAFE_INTEGER.
+      return prices[a.type]<prices[b.type]?-1:
+        prices[a.type]>prices[b.type]?1:a.index-b.index;
+    }
     function renderShopCategory(category=activeShopCategory){
       activeShopCategory=category;
       document.querySelectorAll('.shop-tab').forEach(tab=>
         tab.setAttribute('aria-selected',String(tab.dataset.tab===category)));
-      const ordered=shopCards.map((item,index)=>({item,index,type:item.id.slice(3)}));
-      if(category==='All'){
-        ordered.sort((a,b)=>prices[a.type]<prices[b.type]?-1:
-          prices[a.type]>prices[b.type]?1:a.index-b.index);
-      }
       const search=$('shopSearch').value.trim().toLowerCase();
       const filter=$('shopFilter').value;
-      let matches=0;
-      for(const {item,type} of ordered){
-        const owned=inventory.hotbar.includes(type)||inventory.backpack.includes(type)||
-          [...placed.values()].some(obj=>obj.type===type);
+      const owned=new Set([...inventory.hotbar,...inventory.backpack,
+        ...[...placed.values()].map(obj=>obj.type)]);
+      const matching=[],hidden=[];
+      for(const entry of shopEntries){
+        const {item,type}=entry;
         const searchable=item.querySelector('.item-name')?.textContent.toLowerCase()||type.toLowerCase();
         const accepted=(category==='All'||item.dataset.category===category)&&
-          searchable.includes(search) && (
-            filter==='all' ||
+          searchable.includes(search)&&(
+            filter==='all'||
             filter==='affordable'&&canAfford(prices[type])||
-            filter==='owned'&&owned||
-            filter==='unowned'&&!owned||
+            filter==='owned'&&owned.has(type)||
+            filter==='unowned'&&!owned.has(type)||
             filter==='logic'&&logicTypes.has(type)||
             filter==='free'&&prices[type]===0n);
         item.dataset.hidden=String(!accepted);
-        if(accepted)matches++;
-        $('shopItems').appendChild(item);
+        (accepted?matching:hidden).push(entry);
       }
-      $('shopResults').textContent=matches+' / '+shopCards.length+' machines';
+      matching.sort(compareShopPrices);
+      const container=$('shopItems'),fragment=document.createDocumentFragment();
+      container.classList.toggle('is-grouped',category==='All');
+      if(category==='All'){
+        // Full-width headings make the All view readable without sacrificing
+        // cheapest-first order within each machine type.
+        for(const group of shopCategories){
+          const entries=matching.filter(({item})=>item.dataset.category===group);
+          if(!entries.length)continue; // Hide empty groups when searching/filtering.
+          const {heading,count}=shopHeadings.get(group);
+          count.textContent=entries.length+' '+(entries.length===1?'machine':'machines');
+          fragment.appendChild(heading);
+          for(const {item} of entries)fragment.appendChild(item);
+        }
+      }else{
+        for(const {item} of matching)fragment.appendChild(item);
+      }
+      // Retain all card nodes/event handlers and keep filtered cards hidden.
+      for(const {item} of hidden)fragment.appendChild(item);
+      container.replaceChildren(fragment);
+      $('shopResults').textContent=matching.length+' / '+shopCards.length+' machines';
     }
     function updateAllShopPrices(){
       for(const type of validMachines)
