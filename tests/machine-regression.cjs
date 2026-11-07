@@ -113,11 +113,11 @@ function runSuite(gameSource){
       'allDroppers,megaKeys,megaPorts,placeMegaParts,canOccupy,rootKey,rotateMachine,'+
       'newBlob,chooseDropGrade,upgradeBlob,multiplyBlob,handleBlobArrival,moveBlobs,movementDelay,'+
       'deliverPower,tickFactory,spawnBlob,purchase,travelHistory,undoStack,saveState,switchFactoryPage,'+
-      'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame};';
+      'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame,iconFor,graphics:()=>({quality:graphicsQuality,theme:graphicsTheme,motion:graphicsMotion})};';
     const game=new Function('document','window','navigator','location','localStorage',
       'performance','ResizeObserver','setInterval','setTimeout','clearTimeout',source)(
       document,window,navigator,{protocol:'file:'},storage,performance,undefined,()=>0,()=>1,()=>{});
-    return{game,get,window,storageMap,clock:t=>clock=t,gamepads:p=>gamepads=p};
+    return{game,get,window,document,storageMap,clock:t=>clock=t,gamepads:p=>gamepads=p};
   }
   const put=(game,key,type)=>{
     const m=game.machine(type);game.placed().set(key,m);
@@ -396,6 +396,56 @@ function runSuite(gameSource){
     g.handleBlobArrival(b,p.entry,1000);
     g.handleBlobArrival(b,p.exit,1250);
     return m.pending.length===1&&m.pending[0].worth===50n;
+  });
+
+  verify('All 24 advanced machines have distinct animated SVG models',()=>{
+    const g=boot().game;
+    const names=['FusionChamber','Quantumifyier','Cloner','Infinifyer','Cleaner',
+      'QuantumComputer','MightyDropper','RainbowDropper','TurboDropper','QuantumDropper',
+      'InfiDropper','FusionReactor','SolarField','Recycler','DysonSphere','AdvancedConveyor',
+      'HyperConveyor','WireLift','CounterGate','OverflowDrain','TimerGate','Supercharger',
+      'Singularity','DimensionalRift'];
+    const art=names.map(type=>g.iconFor(type,1,true));
+    return art.length===24&&new Set(art).size===24&&
+      art.every(svg=>svg.includes('<svg')&&svg.includes('machine-depth')&&
+        svg.includes('class="model-')&&svg.includes('</svg>'));
+  });
+  verify('Reactors, orbitals and portals have independent moving parts',()=>{
+    const g=boot().game;
+    return g.iconFor('FusionReactor').includes('model-arc')&&
+      g.iconFor('Quantumifyier').includes('model-rotor-reverse')&&
+      g.iconFor('DysonSphere').includes('model-rotor')&&
+      g.iconFor('DimensionalRift').includes('model-portal');
+  });
+  verify('Large machines have custom matching panel textures',()=>{
+    const g=boot().game;
+    const a=g.iconFor('MegaPart',1,false,true,null,false,0,null,'SolarField',0);
+    const b=g.iconFor('MegaPart',1,false,true,null,false,0,null,'DysonSphere',1);
+    return a!==b&&a.includes('#174d84')&&b.includes('#ffde93');
+  });
+  verify('Auto graphics gives desktop Ultra and small screens Balanced',()=>{
+    const desktop=boot({width:1440,height:900});
+    const phone=boot({width:390,height:844});
+    return desktop.game.graphics().quality==='auto'&&
+      desktop.document.body.dataset.graphicsQuality==='ultra'&&
+      phone.document.body.dataset.graphicsQuality==='balanced';
+  });
+  verify('Graphics quality, floor and motion survive save/reload',()=>{
+    const store=new Map(),a=boot({storageMap:store});
+    for(const [id,value]of [['graphicsQuality','minimal'],
+      ['graphicsTheme','midnight'],['graphicsMotion','reduced']]){
+      const control=a.get(id);control.value=value;control.emit('change',{target:control});
+    }
+    if(a.document.body.dataset.graphicsQuality!=='minimal'||
+      a.document.body.dataset.factoryTheme!=='midnight'||
+      a.document.body.dataset.graphicsMotion!=='reduced')return false;
+    a.game.saveState();
+    const saved=JSON.parse(store.get('tiny-factory-save-v1'));
+    const reloaded=boot({storageMap:store});
+    return saved.graphics.quality==='minimal'&&saved.graphics.theme==='midnight'&&
+      saved.graphics.motion==='reduced'&&
+      reloaded.game.graphics().quality==='minimal'&&
+      reloaded.document.body.dataset.factoryTheme==='midnight';
   });
   return{total:checks.length,passed:checks.filter(c=>c.pass).length,
     failures:checks.filter(c=>!c.pass),checks};
