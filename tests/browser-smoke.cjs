@@ -44,6 +44,24 @@ async function run(){
       const page=await context.newPage();
       const errors=[];
       page.on('pageerror',error=>errors.push(error.message));
+      // Count real Web Audio oscillator starts, not just toggles in the UI.
+      // This catches the failure where the controls appear but stay silent.
+      await page.addInitScript(()=>{
+        window.__tfAudioProbe={notes:0,available:!!(window.AudioContext||window.webkitAudioContext)};
+        const Constructor=window.AudioContext||window.webkitAudioContext;
+        if(!Constructor)return;
+        const nativeStart=Constructor.prototype.createOscillator;
+        if(!nativeStart)return;
+        Constructor.prototype.createOscillator=function(...args){
+          const oscillator=nativeStart.apply(this,args);
+          const start=oscillator.start.bind(oscillator);
+          oscillator.start=(...args)=>{
+            window.__tfAudioProbe.notes++;
+            return start(...args);
+          };
+          return oscillator;
+        };
+      });
       if(profile.gamepad){
         await page.addInitScript(()=>{
           let buttons=Array.from({length:17},()=>({pressed:false,value:0}));
@@ -117,6 +135,17 @@ async function run(){
       assert.deepEqual(audioSetting.stored,{muted:false,music:45,sfx:20});
       assert.equal(audioSetting.music,'45%');
       assert.equal(audioSetting.sfx,'20%');
+      const soundBefore=await page.evaluate(()=>window.__tfAudioProbe?.notes??0);
+      await page.locator('#testAudio').click();
+      await page.waitForFunction(()=>window.__tfAudioProbe?.notes>0,
+        {timeout:5000});
+      const soundCheck=await page.evaluate(()=>({
+        notes:window.__tfAudioProbe.notes,
+        status:document.getElementById('audioStatus').textContent
+      }));
+      assert(soundCheck.notes>soundBefore,
+        'Test sound must start real Web Audio oscillators, not just update controls');
+      assert.equal(soundCheck.status,'Sound on ✓');
       await page.waitForTimeout(350); // Capture fully opened dialog, not its entrance transition.
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();

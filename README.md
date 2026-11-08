@@ -30,9 +30,22 @@ music files are needed, so it works offline too.
 Browsers require a tap, click, or key press before audio starts. Use **🔊 / 🔇**
 next to the factory controls to mute everything, or open **ⓘ Factory
 information → Music & sound** to adjust the music and sound-effect volumes
-independently. Audio preferences are saved on your device separately from
-factory progress. Music stays quiet while the game is paused or the tab is
-hidden; sound effects for very busy sale lines are rate-limited.
+independently. If nothing plays, tap **▶ Test sound** to unlock audio and see
+whether the browser has allowed it. Audio preferences are saved on your device
+separately from factory progress. Music stays quiet while the game is paused
+or the tab is hidden; sound effects for very busy sale lines are rate-limited.
+
+## Production while another tab is open
+
+The factory continues running while its browser tab is in the background.
+Since browsers throttle and can even suspend background timers, Tiny Factory
+replays missed simulation time when the tab is resumed, so machine output,
+power, conveyor movement and earnings catch up rather than stopping.
+Long absences are processed in small batches to keep the browser responsive.
+A manually paused factory does **not** produce during that pause.
+
+This applies while the game page remains open; a completely closed tab or
+a browser shut down by the operating system cannot run JavaScript.
 
 ## Running locally
 
