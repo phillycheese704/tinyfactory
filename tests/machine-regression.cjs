@@ -115,7 +115,8 @@ function runSuite(gameSource){
       'newBlob,chooseDropGrade,upgradeBlob,multiplyBlob,handleBlobArrival,moveBlobs,movementDelay,'+
       'deliverPower,tickFactory,spawnBlob,purchase,travelHistory,undoStack,saveState,switchFactoryPage,'+
       'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame,iconFor,graphics:()=>({quality:graphicsQuality,theme:graphicsTheme,motion:graphicsMotion}),' +
-      'sound:()=>({settings:audioPreferences,context:audioContext,beat:musicNoteIndex}),startAudioFromGesture,scheduleFactoryMusic,playSoundEffect};';
+      'sound:()=>({settings:audioPreferences,context:audioContext,beat:musicNoteIndex}),startAudioFromGesture,scheduleFactoryMusic,playSoundEffect,'+
+      'background:()=>({simulatedThrough,now:factoryNow()}),setSimulationPaused};';
     const game=new Function('document','window','navigator','location','localStorage',
       'performance','ResizeObserver','setInterval','setTimeout','clearTimeout',source)(
       document,window,navigator,{protocol:'file:'},storage,performance,undefined,()=>0,()=>1,()=>{});
@@ -175,9 +176,49 @@ function runSuite(gameSource){
     g.playSoundEffect('place');g.scheduleFactoryMusic();
     if(events.length!==played+2)return false;
     a.get('soundToggle').click();
+    if(events.length<played+5)return false; // Unmute plays confirmation.
+    const prior=events.length;
     g.playSoundEffect('sell');
     g.playSoundEffect('sell');
-    return events.length===played+4;
+    return events.length===prior+2;
+  });
+  verify('Audio Test sound button starts a direct audible preview',()=>{
+    const a=boot(),g=a.game,tones=[];
+    const automation={setTargetAtTime(){},setValueAtTime(){},exponentialRampToValueAtTime(){}};
+    class AudioContextMock{
+      constructor(){this.state='running';this.currentTime=2;this.destination={};}
+      createGain(){return{gain:automation,connect(){}};}
+      createOscillator(){return{frequency:automation,type:'sine',connect(){},
+        start(){tones.push('tone');},stop(){}};}
+      resume(){return Promise.resolve();}
+    }
+    a.window.AudioContext=AudioContextMock;
+    a.get('testAudio').click();
+    return tones.length>=3&&g.sound().context instanceof AudioContextMock&&
+      a.get('audioStatus').textContent==='Sound on ✓';
+  });
+  verify('Background tab replays missed production and sales without manual input',()=>{
+    const a=boot(),g=a.game;
+    const drop=put(g,'5,5','MightyDropper');
+    put(g,'5,6','Conveyor');put(g,'5,7','Extractor');
+    a.document.visibilityState='hidden';
+    a.clock(30000);for(let i=0;i<15;i++)g.tickFactory();
+    if(g.stats.sold<5||g.money()<=0n||
+       g.stats.playMs<25000||g.background().simulatedThrough<30000)return false;
+    a.document.visibilityState='visible';
+    return drop.lastAuto>=28000&&g.stats.produced>=g.stats.sold;
+  });
+  verify('Intentional pause excludes paused time from background catch-up',()=>{
+    const a=boot(),g=a.game;
+    put(g,'5,5','MightyDropper');put(g,'5,6','Conveyor');put(g,'5,7','Extractor');
+    a.clock(3000);g.tickFactory();
+    a.get('pauseBtn').click();
+    const money=g.money(),sold=g.stats.sold;
+    a.clock(20000);g.tickFactory();
+    if(g.money()!==money||g.stats.sold!==sold)return false;
+    a.get('pauseBtn').click();
+    a.clock(22500);for(let i=0;i<12;i++)g.tickFactory();
+    return g.background().now<=5500&&g.stats.sold<=sold+2;
   });
   verify('Pip introduces a new player and supports back, next and finish',()=>{
     const a=boot(),g=a.game,modal=a.get('tutorialModal');
@@ -354,7 +395,7 @@ function runSuite(gameSource){
   });
   verify('Solar Field produces power without running cost',()=>{
     const a=boot(),g=a.game;put(g,'4,4','SolarField');
-    a.clock(12000);g.tickFactory();
+    a.clock(12000);for(let i=0;i<8;i++)g.tickFactory();
     return g.money()===0n&&g.stats.powerGenerated>=1&&g.stats.powerGenerated<=15;
   });
   verify('Dyson Sphere fully powers connected consumers',()=>{
