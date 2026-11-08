@@ -20,6 +20,20 @@ The shop, money display, inventory and page navigation remain fixed.
 
 For the full control reference, open **ⓘ Factory information** in the game.
 
+## Music & sound effects 🎶
+
+The game has an original, looping chiptune and short synthesized sound effects
+for buying and placing machines, selling blobs, and other factory actions.
+All audio is generated locally with Web Audio: no downloads or third-party
+music files are needed, so it works offline too.
+
+Browsers require a tap, click, or key press before audio starts. Use **🔊 / 🔇**
+next to the factory controls to mute everything, or open **ⓘ Factory
+information → Music & sound** to adjust the music and sound-effect volumes
+independently. Audio preferences are saved on your device separately from
+factory progress. Music stays quiet while the game is paused or the tab is
+hidden; sound effects for very busy sale lines are rate-limited.
+
 ## Running locally
 
 Open `index.html` in a modern browser. No bundler, runtime dependencies, or
