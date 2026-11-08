@@ -261,6 +261,9 @@
     .audio-controls label{display:grid;gap:5px;font:800 12px/1.4 sans-serif;min-width:0}
     .audio-controls input[type="range"]{width:100%;min-width:0;accent-color:#467aa6;cursor:pointer;touch-action:auto}
     .audio-controls .audio-value{font-variant-numeric:tabular-nums;color:#365778}
+    .audio-test-row{grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .audio-test-row button{background:#def7df;border:2px solid #447a58;border-radius:9px;padding:8px 12px;font:900 12px sans-serif;cursor:pointer}
+    .audio-test-row output{font:700 12px/1.4 sans-serif;color:#405973}
     @media(max-width:400px){.audio-controls{grid-template-columns:1fr}}
     .factory-actions #tutorialToggle:hover{background:#cceaff}
     /* Pip's guide lives outside the world, so nothing pans or zooms with it. */
@@ -814,6 +817,8 @@
         <label>Sound effects <span class="audio-value" id="sfxVolumeValue">65%</span>
           <input id="sfxVolume" type="range" min="0" max="100" step="5" value="65" aria-label="Sound effects volume">
         </label>
+        <div class="audio-test-row"><button type="button" id="testAudio">▶ Test sound</button>
+          <output id="audioStatus" role="status" aria-live="polite">Tap to enable audio</output></div>
       </div>
       <label class="stats-option"><input type="checkbox" id="bottleneckToggle"> Highlight bottlenecks (blocked for 2+ seconds)</label>
       <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
@@ -925,6 +930,7 @@
       }
     }catch{/* Audio settings are optional in private browsing. */}
     let audioContext=null,musicBus=null,sfxBus=null,nextMusicTime=0,musicNoteIndex=0;
+    let audioStarted=false,audioUnsupported=false;
     let musicInterval=null,lastSaleChime=-Infinity;
     const musicLead=[72,0,76,0,79,76,74,0,72,0,69,71,72,0,67,0,
       74,0,77,0,81,77,76,0,74,72,69,0,71,0,72,0];
@@ -955,34 +961,64 @@
       $('soundToggle').title=muted?'Unmute Tiny Factory audio':'Mute Tiny Factory audio';
       if(audioContext){
         const t=audioContext.currentTime;
-        musicBus.gain.setTargetAtTime(muted?0:audioPreferences.music/100*.23,t,.035);
-        sfxBus.gain.setTargetAtTime(muted?0:audioPreferences.sfx/100*.28,t,.035);
+        musicBus.gain.setTargetAtTime(muted?0:audioPreferences.music/100*.48,t,.035);
+        sfxBus.gain.setTargetAtTime(muted?0:audioPreferences.sfx/100*.60,t,.035);
       }
+      updateAudioStatus();
+    }
+    function updateAudioStatus(){
+      const message=audioPreferences.muted?'Muted — tap 🔇 to unmute':
+        audioUnsupported?'Audio is unavailable in this browser':
+        audioContext?.state==='running'?'Sound on ✓':
+        audioContext?'Audio paused by browser — tap Test sound':
+        'Tap Test sound or interact with the game';
+      $('audioStatus').textContent=message;
     }
     function saveAudioPreferences(){
       try{localStorage.setItem(AUDIO_PREF_KEY,JSON.stringify(audioPreferences));}catch{}
     }
-    function startAudioFromGesture(){
-      if(audioPreferences.muted||(!audioPreferences.music&&!audioPreferences.sfx))return;
+    function startAudioFromGesture(preview=false){
+      if(audioPreferences.muted)return;
       if(!audioContext){
         const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-        if(!AudioContextClass)return;
+        if(!AudioContextClass){audioUnsupported=true;updateAudioStatus();return;}
         try{
           audioContext=new AudioContextClass();
           musicBus=audioContext.createGain();sfxBus=audioContext.createGain();
           musicBus.connect(audioContext.destination);sfxBus.connect(audioContext.destination);
+          audioContext.onstatechange=updateAudioStatus;
           updateAudioUI();
-          // Keep just a short lookahead queued; turning off sound is immediate.
-          musicInterval=setInterval(scheduleFactoryMusic,130);
+          // Look ahead for Web Audio notes. This continues between touches,
+          // while still obeying mobile autoplay/activation policies.
+          musicInterval=setInterval(scheduleFactoryMusic,100);
           nextMusicTime=0;
         }catch{
-          audioContext=null;musicBus=null;sfxBus=null;return;
+          audioContext=null;musicBus=null;sfxBus=null;
+          audioUnsupported=true;updateAudioStatus();return;
         }
       }
-      if(audioContext.state==='suspended'){
-        nextMusicTime=0;
-        audioContext.resume().catch(()=>{/* Some browsers defer sound until another gesture. */});
-      }
+      const ready=()=>{
+        if(!audioContext||audioContext.state!=='running')return;
+        updateAudioStatus();
+        scheduleFactoryMusic();
+        if(preview||!audioStarted){
+          audioStarted=true;
+          // Always make an audible confirmation, even with no factory yet.
+          // A test sound uses the SFX channel, or the music channel if
+          // the SFX slider is at zero.
+          if(audioPreferences.sfx>0)playSoundEffect('success');
+          else if(audioPreferences.music>0)
+            audioTone(79,audioContext.currentTime+.015,.24,.4,'triangle',musicBus);
+        }
+      };
+      if(audioContext.state!=='running'){
+        // iOS can report "interrupted" as well as "suspended".
+        // Resume must be called synchronously in the tap/click handler.
+        try{
+          const resuming=audioContext.resume();
+          if(resuming?.then)resuming.then(ready,updateAudioStatus);
+        }catch{updateAudioStatus();}
+      }else ready();
     }
     function scheduleFactoryMusic(){
       if(!audioContext||audioContext.state!=='running')return;
@@ -1039,11 +1075,21 @@
     $('soundToggle').addEventListener('click',()=>{
       audioPreferences.muted=!audioPreferences.muted;
       updateAudioUI();saveAudioPreferences();
-      if(!audioPreferences.muted)startAudioFromGesture();
+      if(!audioPreferences.muted)startAudioFromGesture(true);
+    });
+    $('testAudio').addEventListener('click',()=>{
+      if(audioPreferences.muted){
+        audioPreferences.muted=false;updateAudioUI();saveAudioPreferences();
+      }
+      // A dedicated play button is more reliable on iPad Safari than an
+      // arbitrary passive pointer event and gives clear device feedback.
+      startAudioFromGesture(true);
     });
     // Input gestures (not page load) unlock sound on desktop, iPad and phones.
-    document.addEventListener('pointerdown',startAudioFromGesture,{passive:true});
-    document.addEventListener('keydown',startAudioFromGesture);
+    document.addEventListener('pointerdown',()=>startAudioFromGesture(),{passive:true});
+    document.addEventListener('touchstart',()=>startAudioFromGesture(),{passive:true});
+    document.addEventListener('click',()=>startAudioFromGesture(),true);
+    document.addEventListener('keydown',()=>startAudioFromGesture());
     document.addEventListener('visibilitychange',()=>{nextMusicTime=0;});
     updateAudioUI();
     const HOTBAR_SIZE = 9;
