@@ -974,13 +974,15 @@
           updateAudioUI();
           // Keep just a short lookahead queued; turning off sound is immediate.
           musicInterval=setInterval(scheduleFactoryMusic,130);
+          nextMusicTime=0;
         }catch{
           audioContext=null;musicBus=null;sfxBus=null;return;
         }
       }
-      if(audioContext.state==='suspended')
+      if(audioContext.state==='suspended'){
+        nextMusicTime=0;
         audioContext.resume().catch(()=>{/* Some browsers defer sound until another gesture. */});
-      nextMusicTime=0;
+      }
     }
     function scheduleFactoryMusic(){
       if(!audioContext||audioContext.state!=='running')return;
