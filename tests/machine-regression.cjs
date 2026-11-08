@@ -114,7 +114,8 @@ function runSuite(gameSource){
       'allDroppers,megaKeys,megaPorts,placeMegaParts,canOccupy,rootKey,rotateMachine,'+
       'newBlob,chooseDropGrade,upgradeBlob,multiplyBlob,handleBlobArrival,moveBlobs,movementDelay,'+
       'deliverPower,tickFactory,spawnBlob,purchase,travelHistory,undoStack,saveState,switchFactoryPage,'+
-      'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame,iconFor,graphics:()=>({quality:graphicsQuality,theme:graphicsTheme,motion:graphicsMotion})};';
+      'pagePurchasePrice,blobDestination,removeMachine,formatBalance,pollGamepads,gamepad:()=>gamepadConnected,grid:()=>[gridCols,gridRows],resetGame,iconFor,graphics:()=>({quality:graphicsQuality,theme:graphicsTheme,motion:graphicsMotion}),' +
+      'sound:()=>({settings:audioPreferences,context:audioContext,beat:musicNoteIndex}),startAudioFromGesture,scheduleFactoryMusic,playSoundEffect};';
     const game=new Function('document','window','navigator','location','localStorage',
       'performance','ResizeObserver','setInterval','setTimeout','clearTimeout',source)(
       document,window,navigator,{protocol:'file:'},storage,performance,undefined,()=>0,()=>1,()=>{});
@@ -125,6 +126,59 @@ function runSuite(gameSource){
     if(game.megaKeys(key,type).length>1)game.placeMegaParts(key,m);
     return m;
   };
+  verify('Audio preferences start at gentle defaults and persist independent of saves',()=>{
+    const storageMap=new Map(),a=boot({storageMap}),g=a.game;
+    if(g.sound().context!==null||a.get('musicVolume').value!=='30'||
+       a.get('sfxVolume').value!=='65'||g.sound().settings.muted)return false;
+    a.get('musicVolume').value='45';
+    a.get('musicVolume').emit('input',{target:a.get('musicVolume')});
+    a.get('sfxVolume').value='20';
+    a.get('sfxVolume').emit('input',{target:a.get('sfxVolume')});
+    a.get('soundToggle').click();
+    if(a.get('soundToggle').attrs['aria-pressed']!=='true'||a.get('soundToggle').textContent!=='🔇')return false;
+    const saved=JSON.parse(storageMap.get('tiny-factory-audio-v1'));
+    if(saved.music!==45||saved.sfx!==20||!saved.muted||storageMap.has('tiny-factory-save-v1'))return false;
+    const reloaded=boot({storageMap});
+    return reloaded.game.sound().settings.music===45&&reloaded.game.sound().settings.sfx===20&&
+      reloaded.game.sound().settings.muted&&reloaded.get('musicVolume').value==='45'&&
+      reloaded.get('sfxVolume').value==='20'&&
+      reloaded.get('soundToggle').attrs['aria-pressed']==='true'&&
+      reloaded.game.sound().context===null;
+  });
+  verify('Web Audio only starts after interaction, loops without restarting on taps',()=>{
+    const a=boot(),g=a.game,events=[];
+    const automation={
+      setTargetAtTime(){},setValueAtTime(){},exponentialRampToValueAtTime(){}
+    };
+    class FakeContext{
+      constructor(){this.currentTime=1;this.state='running';this.destination={};}
+      createGain(){return {gain:automation,connect(){}};}
+      createOscillator(){
+        return {frequency:automation,type:'sine',connect(){},
+          start(t){events.push(['play',t,this.type]);},stop(){}};
+      }
+      resume(){return Promise.resolve();}
+    }
+    if(g.sound().context)return false;
+    a.window.AudioContext=FakeContext;
+    g.startAudioFromGesture();
+    if(!(g.sound().context instanceof FakeContext))return false;
+    g.scheduleFactoryMusic();
+    const played=events.length,beat=g.sound().beat;
+    if(played<2||beat<1)return false;
+    g.startAudioFromGesture();
+    g.scheduleFactoryMusic();
+    if(events.length!==played||g.sound().beat!==beat)return false;
+    g.playSoundEffect('buy');
+    if(events.length!==played+2)return false;
+    a.get('soundToggle').click();
+    g.playSoundEffect('place');g.scheduleFactoryMusic();
+    if(events.length!==played+2)return false;
+    a.get('soundToggle').click();
+    g.playSoundEffect('sell');
+    g.playSoundEffect('sell');
+    return events.length===played+4;
+  });
   verify('Pip introduces a new player and supports back, next and finish',()=>{
     const a=boot(),g=a.game,modal=a.get('tutorialModal');
     if(!modal.classList.contains('open')||
