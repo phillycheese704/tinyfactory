@@ -125,6 +125,42 @@ function runSuite(gameSource){
     if(game.megaKeys(key,type).length>1)game.placeMegaParts(key,m);
     return m;
   };
+  verify('Pip introduces a new player and supports back, next and finish',()=>{
+    const a=boot(),g=a.game,modal=a.get('tutorialModal');
+    if(!modal.classList.contains('open')||
+       a.get('tutorialHeading').textContent!=='Hey, factory friend! 👋'||
+       a.get('tutorialStepCount').textContent!=='Step 1 of 6')return false;
+    a.get('tutorialNext').click();
+    if(a.get('tutorialStepCount').textContent!=='Step 2 of 6')return false;
+    a.get('tutorialPrev').click();
+    if(a.get('tutorialStepCount').textContent!=='Step 1 of 6')return false;
+    for(let step=0;step<6;step++)a.get('tutorialNext').click();
+    return !modal.classList.contains('open')&&
+      a.storageMap.get('tiny-factory-pip-tutorial-v1')==='done'&&
+      g.money()===0n&&g.placed().size===0;
+  });
+  verify('Pip skip persists across reloads, but robot button always reopens',()=>{
+    const store=new Map(),a=boot({storageMap:store});
+    a.get('tutorialSkip').click();
+    if(a.get('tutorialModal').classList.contains('open')||store.get('tiny-factory-pip-tutorial-v1')!=='done')return false;
+    const b=boot({storageMap:store});
+    if(b.get('tutorialModal').classList.contains('open'))return false;
+    b.get('tutorialToggle').click();
+    if(!b.get('tutorialModal').classList.contains('open')||
+       b.get('tutorialStepCount').textContent!=='Step 1 of 6')return false;
+    b.get('tutorialModal').emit('keydown',{key:'Escape'});
+    return !b.get('tutorialModal').classList.contains('open');
+  });
+  verify('An existing factory save is not interrupted by first-run tutorial',()=>{
+    const store=new Map([['tiny-factory-save-v1',JSON.stringify({
+      version:1,money:'2468',hotbar:[],backpack:[],blobs:[],placed:[]
+    })]]);
+    const a=boot({storageMap:store});
+    if(a.get('tutorialModal').classList.contains('open')||a.game.money()!==2468n)return false;
+    a.get('tutorialToggle').click();
+    return a.get('tutorialModal').classList.contains('open')&&
+      a.game.money()===2468n;
+  });
   verify('42 machine listings and Mighty price 2M',()=>{
     const a=boot();
     return a.get('shopItems').children.filter(x=>x.classList.contains('item')).length===42&&
