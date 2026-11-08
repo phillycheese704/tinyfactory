@@ -101,9 +101,32 @@ async function run(){
       assert.equal(await page.locator('body').getAttribute('data-graphics-quality'),'ultra');
       assert.equal(await page.locator('body').getAttribute('data-factory-theme'),'midnight');
       assert.equal(await page.locator('body').getAttribute('data-graphics-motion'),'full');
+      // The score is synthesized locally; sound must have accessible, saved
+      // controls on desktop, phones and both iPad orientations.
+      assert.equal(await page.locator('#musicVolume').inputValue(),'30');
+      assert.equal(await page.locator('#sfxVolume').inputValue(),'65');
+      const audioSetting=await page.evaluate(()=>{
+        for(const [id,value] of [['musicVolume','45'],['sfxVolume','20']]){
+          const input=document.getElementById(id);
+          input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+        const stored=JSON.parse(localStorage.getItem('tiny-factory-audio-v1'));
+        return {stored,music:document.getElementById('musicVolumeValue').textContent,
+          sfx:document.getElementById('sfxVolumeValue').textContent};
+      });
+      assert.deepEqual(audioSetting.stored,{muted:false,music:45,sfx:20});
+      assert.equal(audioSetting.music,'45%');
+      assert.equal(audioSetting.sfx,'20%');
       await page.waitForTimeout(350); // Capture fully opened dialog, not its entrance transition.
       await page.screenshot({path:path.join(screenshotDir,profile.name.replace(/\W+/g,'-')+'-stats.png')});
       await page.locator('#closeStats').click();
+      await page.locator('#soundToggle').click();
+      assert.equal(await page.locator('#soundToggle').getAttribute('aria-pressed'),'true');
+      assert.equal(await page.locator('#soundToggle').getAttribute('aria-label'),
+        'Unmute music and sound effects');
+      assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('tiny-factory-audio-v1')).muted),true);
+      await page.locator('#soundToggle').click();
+      assert.equal(await page.locator('#soundToggle').getAttribute('aria-pressed'),'false');
       await page.locator('#shopToggle').click();
       const allShop=await page.evaluate(()=>{
         const children=[...document.getElementById('shopItems').children];
