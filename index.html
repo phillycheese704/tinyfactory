@@ -3414,7 +3414,7 @@ function renderMachineFrame(type,inside,classes=''){
           if(now>=blob.collectAt){
             money+=blob.worth;stats.earned+=blob.worth;stats.sold++;
             if(blob.worth>stats.best)stats.best=blob.worth;
-            updateMoney();blobs.delete(id);changed=true;
+            updateMoney();blobs.delete(id);occupied.delete(blob.key);changed=true;
           }
           continue;
         }
