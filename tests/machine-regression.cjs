@@ -433,6 +433,79 @@ function runSuite(gameSource){
     return m.pending.length===1&&m.pending[0].worth===50n;
   });
 
+  verify('Quantum Computer clones exit connected processors instead of clogging',()=>{
+    const a=boot(),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','QuantumComputer');
+    put(g,'6,7','Conveyor');put(g,'6,8','Extractor');
+    const original=g.newBlob('gold','6,6',1000);
+    original.fromKey='6,5';g.blobs().set(original.id,original);
+    g.handleBlobArrival(original,'6,6',1000);
+    if(g.placed().get('6,6').pending[0]?.fromKey!=='6,5')return false;
+    a.clock(1300);g.moveBlobs(1300);
+    const clone=[...g.blobs().values()].find(blob=>blob.id!==original.id);
+    if(!clone||clone.key!=='6,6'||clone.fromKey!=='6,5'||
+       g.blobDestination(clone)!=='6,7')return false;
+    a.clock(1600);g.moveBlobs(1600);
+    if(clone.key!=='6,7')return false;
+    a.clock(2100);g.moveBlobs(2100);
+    if(clone.key!=='6,8'||clone.state!=='collecting')return false;
+    a.clock(2500);g.moveBlobs(2500);
+    return g.stats.sold===2&&g.blobs().size===0;
+  });
+  verify('Existing self-originating processor blobs recover without save reset',()=>{
+    const a=boot(),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','QuantumComputer');
+    put(g,'6,7','Conveyor');put(g,'6,8','Extractor');
+    const legacy=g.newBlob('gold','6,6',1000);
+    legacy.fromKey='6,6';legacy.blockedSince=1000;
+    g.blobs().set(legacy.id,legacy);
+    if(g.blobDestination(legacy)!=='6,7')return false;
+    a.clock(1300);g.moveBlobs(1300);
+    return legacy.key==='6,7'&&legacy.blockedSince===undefined;
+  });
+  verify('Extractor frees its tile immediately after collecting a blob',()=>{
+    const a=boot(),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','Extractor');
+    const finished=g.newBlob('gold','6,6',1000);
+    finished.state='collecting';finished.collectAt=1500;
+    const waiting=g.newBlob('normal','6,5',1000);
+    g.blobs().set(finished.id,finished);g.blobs().set(waiting.id,waiting);
+    a.clock(1600);g.moveBlobs(1600);
+    return g.stats.sold===1&&g.blobs().size===1&&
+      waiting.key==='6,6'&&waiting.state==='collecting'&&
+      waiting.blockedSince===undefined;
+  });
+  verify('Saved self-originating clone automatically escapes after reload',()=>{
+    const store=new Map(),a=boot({storageMap:store}),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','QuantumComputer');
+    put(g,'6,7','Conveyor');put(g,'6,8','Extractor');
+    const stuck=g.newBlob('gold','6,6',1000);
+    stuck.fromKey='6,6';stuck.blockedSince=1000;
+    g.blobs().set(stuck.id,stuck);
+    a.window.tinyFactoryTesting.addMoney('1');
+    g.saveState();
+    const reloaded=boot({storageMap:store});
+    const restored=[...reloaded.game.blobs().values()][0];
+    if(!restored||restored.fromKey!=='6,6')return false;
+    reloaded.clock(1300);reloaded.game.moveBlobs(1300);
+    return restored.key==='6,7'&&restored.blockedSince===undefined;
+  });
+  verify('Singularity copies retain incoming belt and release onto conveyors',()=>{
+    const a=boot(),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','Singularity');
+    put(g,'6,7','Conveyor');put(g,'6,8','Extractor');
+    const source=g.newBlob('gold','6,6',1000);
+    source.fromKey='6,5';g.handleBlobArrival(source,'6,6',1000);
+    a.clock(12000);g.moveBlobs(12000);
+    const first=[...g.blobs().values()][0];
+    if(!first||first.fromKey!=='6,5'||g.blobDestination(first)!=='6,7')return false;
+    a.clock(12300);g.moveBlobs(12300);
+    const outputs=[...g.blobs().values()];
+    return outputs.length===2&&first.key==='6,7'&&
+      outputs.every(blob=>blob.fromKey==='6,5'||blob===first)&&
+      outputs.some(blob=>blob.key==='6,6'&&g.blobDestination(blob)==='6,7');
+  });
+
   verify('All 24 advanced machines have distinct animated SVG models',()=>{
     const g=boot().game;
     const names=['FusionChamber','Quantumifyier','Cloner','Infinifyer','Cleaner',
