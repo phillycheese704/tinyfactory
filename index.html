@@ -253,6 +253,15 @@
     .factory-actions button:disabled{opacity:.35;cursor:default}
     .factory-actions button[aria-pressed="true"]{background:#ffe19e}
     .factory-actions #tutorialToggle{background:#e6f4ff;font-size:19px}
+    .factory-actions #soundToggle{background:#effbe7;font-size:18px}
+    .factory-actions #soundToggle[aria-pressed="true"]{background:#ffe5e5}
+    .audio-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 16px;padding:12px 13px;margin-top:12px;border:2px solid #c5d8e8;border-radius:13px;background:#f1f8ff}
+    .audio-controls-head{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px;font:900 14px/1.4 sans-serif}
+    .audio-controls-head small{color:#576b7c;font:700 11px/1.3 sans-serif}
+    .audio-controls label{display:grid;gap:5px;font:800 12px/1.4 sans-serif;min-width:0}
+    .audio-controls input[type="range"]{width:100%;min-width:0;accent-color:#467aa6;cursor:pointer;touch-action:auto}
+    .audio-controls .audio-value{font-variant-numeric:tabular-nums;color:#365778}
+    @media(max-width:400px){.audio-controls{grid-template-columns:1fr}}
     .factory-actions #tutorialToggle:hover{background:#cceaff}
     /* Pip's guide lives outside the world, so nothing pans or zooms with it. */
     .tutorial-modal{z-index:90;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
@@ -696,6 +705,7 @@
     <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo building action" disabled>↷</button>
     <button type="button" id="pauseBtn" title="Pause factory (P)" aria-label="Pause simulation" aria-pressed="false">⏸</button>
     <button type="button" id="tutorialToggle" title="Meet Pip, your robot guide" aria-label="Open robot tutorial" aria-haspopup="dialog" aria-controls="tutorialModal">🤖</button>
+    <button type="button" id="soundToggle" title="Mute Tiny Factory audio" aria-label="Mute music and sound effects" aria-pressed="false">🔊</button>
   </div>
   <div class="sorter-panel tutorial-modal" id="tutorialModal" role="dialog" aria-modal="true" aria-labelledby="tutorialHeading" aria-describedby="tutorialMessage" aria-hidden="true">
     <section class="tutorial-card">
@@ -796,6 +806,15 @@
           </select>
         </label>
       </div>
+      <div class="audio-controls" role="group" aria-label="Music and sound settings">
+        <div class="audio-controls-head"><strong>🎶 Music & sound</strong><small>Original chiptune • saved on this device</small></div>
+        <label>Background music <span class="audio-value" id="musicVolumeValue">30%</span>
+          <input id="musicVolume" type="range" min="0" max="100" step="5" value="30" aria-label="Music volume">
+        </label>
+        <label>Sound effects <span class="audio-value" id="sfxVolumeValue">65%</span>
+          <input id="sfxVolume" type="range" min="0" max="100" step="5" value="65" aria-label="Sound effects volume">
+        </label>
+      </div>
       <label class="stats-option"><input type="checkbox" id="bottleneckToggle"> Highlight bottlenecks (blocked for 2+ seconds)</label>
       <p class="stats-note">Rates use the last 10 seconds. Orange tiles have waiting blobs; red tiles have long-standing jams. Statistics are saved with your factory.</p>
       <details class="controls-help">
@@ -890,6 +909,143 @@
   <script>
     'use strict';
     const $ = id => document.getElementById(id);
+
+    // Original, lightweight Web Audio tones: no downloaded tracks or audio files.
+    // Browsers block autoplay until a real touch/click/key interaction.
+    const AUDIO_PREF_KEY='tiny-factory-audio-v1';
+    const audioPreferences={muted:false,music:30,sfx:65};
+    try {
+      const saved=JSON.parse(localStorage.getItem(AUDIO_PREF_KEY)||'null');
+      if(saved&&typeof saved==='object'){
+        if(typeof saved.muted==='boolean')audioPreferences.muted=saved.muted;
+        for(const name of ['music','sfx']){
+          if(Number.isFinite(saved[name]))
+            audioPreferences[name]=Math.max(0,Math.min(100,Math.round(saved[name]/5)*5));
+        }
+      }
+    }catch{/* Audio settings are optional in private browsing. */}
+    let audioContext=null,musicBus=null,sfxBus=null,nextMusicTime=0,musicNoteIndex=0;
+    let musicInterval=null,lastSaleChime=-Infinity;
+    const musicLead=[72,0,76,0,79,76,74,0,72,0,69,71,72,0,67,0,
+      74,0,77,0,81,77,76,0,74,72,69,0,71,0,72,0];
+    const musicBass=[48,48,55,55,53,53,55,55]; // an original little factory loop
+    const pitchFromMidi=midi=>440*Math.pow(2,(midi-69)/12);
+    function audioTone(midi,at,duration,strength,wave,bus,slideTo){
+      if(!audioContext||!bus)return;
+      const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+      osc.type=wave;
+      osc.frequency.setValueAtTime(pitchFromMidi(midi),at);
+      if(slideTo!==undefined)
+        osc.frequency.exponentialRampToValueAtTime(pitchFromMidi(slideTo),at+duration);
+      gain.gain.setValueAtTime(0.0001,at);
+      gain.gain.exponentialRampToValueAtTime(Math.max(.0002,strength),at+.012);
+      gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
+      osc.connect(gain);gain.connect(bus);
+      osc.start(at);osc.stop(at+duration+.01);
+    }
+    function updateAudioUI(){
+      $('musicVolume').value=String(audioPreferences.music);
+      $('sfxVolume').value=String(audioPreferences.sfx);
+      $('musicVolumeValue').textContent=audioPreferences.music+'%';
+      $('sfxVolumeValue').textContent=audioPreferences.sfx+'%';
+      const muted=audioPreferences.muted;
+      $('soundToggle').textContent=muted?'🔇':'🔊';
+      $('soundToggle').setAttribute('aria-pressed',String(muted));
+      $('soundToggle').setAttribute('aria-label',muted?'Unmute music and sound effects':'Mute music and sound effects');
+      $('soundToggle').title=muted?'Unmute Tiny Factory audio':'Mute Tiny Factory audio';
+      if(audioContext){
+        const t=audioContext.currentTime;
+        musicBus.gain.setTargetAtTime(muted?0:audioPreferences.music/100*.23,t,.035);
+        sfxBus.gain.setTargetAtTime(muted?0:audioPreferences.sfx/100*.28,t,.035);
+      }
+    }
+    function saveAudioPreferences(){
+      try{localStorage.setItem(AUDIO_PREF_KEY,JSON.stringify(audioPreferences));}catch{}
+    }
+    function startAudioFromGesture(){
+      if(audioPreferences.muted||(!audioPreferences.music&&!audioPreferences.sfx))return;
+      if(!audioContext){
+        const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+        if(!AudioContextClass)return;
+        try{
+          audioContext=new AudioContextClass();
+          musicBus=audioContext.createGain();sfxBus=audioContext.createGain();
+          musicBus.connect(audioContext.destination);sfxBus.connect(audioContext.destination);
+          updateAudioUI();
+          // Keep just a short lookahead queued; turning off sound is immediate.
+          musicInterval=setInterval(scheduleFactoryMusic,130);
+          nextMusicTime=0;
+        }catch{
+          audioContext=null;musicBus=null;sfxBus=null;return;
+        }
+      }
+      if(audioContext.state==='suspended'){
+        nextMusicTime=0;
+        audioContext.resume().catch(()=>{/* Some browsers defer sound until another gesture. */});
+      }
+    }
+    function scheduleFactoryMusic(){
+      if(!audioContext||audioContext.state!=='running')return;
+      if(audioPreferences.muted||audioPreferences.music===0||
+         pausedAt!==null||document.visibilityState==='hidden'){
+        nextMusicTime=0;return;
+      }
+      const now=audioContext.currentTime,stepLength=.25;
+      if(!nextMusicTime||nextMusicTime<now)nextMusicTime=now+.04;
+      let scheduled=0;
+      while(nextMusicTime<now+.35&&scheduled++<3){
+        const step=musicNoteIndex%musicLead.length,lead=musicLead[step];
+        if(lead)audioTone(lead,nextMusicTime,.18,.20,'triangle',musicBus);
+        if(step%4===0){
+          audioTone(musicBass[Math.floor(step/4)],nextMusicTime,.44,.23,'sine',musicBus);
+          audioTone(84,nextMusicTime,.035,.055,'triangle',musicBus,79);
+        }
+        if(step%4===2)audioTone(67,nextMusicTime,.075,.045,'sine',musicBus);
+        musicNoteIndex++;nextMusicTime+=stepLength;
+      }
+    }
+    function playSoundEffect(kind){
+      if(!audioContext||audioContext.state!=='running'||audioPreferences.muted||
+         audioPreferences.sfx===0||document.visibilityState==='hidden')return;
+      const t=audioContext.currentTime+.003;
+      if(kind==='buy'){
+        audioTone(76,t,.10,.32,'sine',sfxBus);
+        audioTone(83,t+.085,.15,.26,'triangle',sfxBus);
+      }else if(kind==='place'){
+        audioTone(60,t,.085,.32,'triangle',sfxBus,67);
+        audioTone(79,t+.06,.12,.18,'sine',sfxBus);
+      }else if(kind==='delete'){
+        audioTone(70,t,.18,.24,'sawtooth',sfxBus,49);
+      }else if(kind==='click'){
+        audioTone(80,t,.07,.13,'sine',sfxBus);
+      }else if(kind==='success'){
+        audioTone(72,t,.11,.23,'sine',sfxBus);
+        audioTone(79,t+.1,.16,.24,'triangle',sfxBus);
+        audioTone(84,t+.21,.21,.20,'sine',sfxBus);
+      }else if(kind==='sell'){
+        if(t-lastSaleChime<.35)return; // Busy factories stay pleasant.
+        lastSaleChime=t;
+        audioTone(87,t,.07,.15,'sine',sfxBus);
+        audioTone(91,t+.07,.12,.11,'sine',sfxBus);
+      }
+    }
+    for(const [name,controlId] of [['music','musicVolume'],['sfx','sfxVolume']]){
+      $(controlId).addEventListener('input',event=>{
+        audioPreferences[name]=Math.max(0,Math.min(100,Number(event.target.value)||0));
+        updateAudioUI();saveAudioPreferences();
+        if(!audioPreferences.muted)startAudioFromGesture();
+      });
+    }
+    $('soundToggle').addEventListener('click',()=>{
+      audioPreferences.muted=!audioPreferences.muted;
+      updateAudioUI();saveAudioPreferences();
+      if(!audioPreferences.muted)startAudioFromGesture();
+    });
+    // Input gestures (not page load) unlock sound on desktop, iPad and phones.
+    document.addEventListener('pointerdown',startAudioFromGesture,{passive:true});
+    document.addEventListener('keydown',startAudioFromGesture);
+    document.addEventListener('visibilitychange',()=>{nextMusicTime=0;});
+    updateAudioUI();
     const HOTBAR_SIZE = 9;
     const BACKPACK_SIZE = 36;
     const MIN_GRID_SIDE = 14;
@@ -915,6 +1071,7 @@
       $('pauseBtn').setAttribute('aria-label',shouldPause?'Resume simulation':'Pause simulation');
       renderStats();
       showToast(shouldPause?'Factory paused':'Factory resumed');
+      nextMusicTime=0;playSoundEffect('click');
     }
     $('pauseBtn').addEventListener('click',()=>setSimulationPaused(pausedAt===null));
     const directions = [[-1,0],[0,1],[1,0],[0,-1]]; // up, right, down, left
@@ -1154,7 +1311,7 @@
       factoryPages.push({placed:new Map(),blobs:new Map(),lastMovementAt:factoryNow()});
       closePageUnlock();
       switchFactoryPage(factoryPages.length-1);
-      showToast('Unlocked Page '+factoryPages.length);
+      showToast('Unlocked Page '+factoryPages.length);playSoundEffect('success');
     });
     function updateUndoButtons(){
       $('undoBtn').disabled=!undoStack.length;
@@ -1172,6 +1329,11 @@
         if(undoStack.length>MAX_UNDO)undoStack.shift();
         redoStack.length=0;
         updateUndoButtons();
+        playSoundEffect(label.startsWith('Buy ')?'buy':
+          label.startsWith('Delete ')?'delete':
+          label.startsWith('Place ')?'place':
+          label.startsWith('Move ')||label.startsWith('Rotate ')?
+            'place':'click');
       }
       return result;
     }
@@ -3506,6 +3668,7 @@ function renderMachineFrame(type,inside,classes=''){
           if(now>=blob.collectAt){
             money+=blob.worth;stats.earned+=blob.worth;stats.sold++;
             if(blob.worth>stats.best)stats.best=blob.worth;
+            playSoundEffect('sell');
             updateMoney();blobs.delete(id);occupied.delete(blob.key);changed=true;
           }
           continue;
@@ -3858,7 +4021,7 @@ function renderMachineFrame(type,inside,classes=''){
       $('shopLayer').setAttribute('aria-hidden', String(!open));
       $('shopToggle').setAttribute('aria-expanded', String(open));
       document.body.classList.toggle('shop-open', open);
-      if (open) $('closeShop').focus();
+      if (open){playSoundEffect('click');$('closeShop').focus();}
       else $('shopToggle').focus();
       // No game pause; the dimmed/blurred background remains live.
     }
