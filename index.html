@@ -3208,8 +3208,10 @@ function renderMachineFrame(type,inside,classes=''){
     function queueClone(machine,blob,worth=blob.worth,count=1){
       machine.pending=machine.pending||[];
       for(let i=0;i<count&&machine.pending.length<80;i++)
-        machine.pending.push({...blob,id:0,key:null,worth,fromKey:null,
-          state:'waiting',arrivedAt:0,collectAt:0});
+        machine.pending.push({...blob,id:0,key:null,worth,
+          // A clone follows the source blob's incoming conveyor; using the
+          // machine's own tile as its origin makes processorExit reject it.
+          fromKey:blob.fromKey??null,state:'waiting',arrivedAt:0,collectAt:0});
     }
     function canFeedConveyor(from,to,direction){
       const target=placed.get(to);
@@ -3245,7 +3247,9 @@ function renderMachineFrame(type,inside,classes=''){
         return null;
       }
       if(processorTypes.has(obj.type))
-        return processorExit(blob.key,obj,blob.fromKey);
+        // Previous versions gave generated clones their own tile as fromKey,
+        // permanently blocking the only valid exit. Heal those saved blobs.
+        return processorExit(blob.key,obj,blob.fromKey===blob.key?null:blob.fromKey);
       if(obj.type==='LaserPart'){
         const center=obj.parent,laser=placed.get(center);
         if(!laserPipelineReady(center))return null;
@@ -3460,7 +3464,10 @@ function renderMachineFrame(type,inside,classes=''){
         const output=megaProcessors.has(obj.type)?megaPorts(key,obj)?.exit:key;
         if(!output||occupied.has(output))continue;
         const pending=obj.pending.shift(),id=nextBlobId++;
-        blobs.set(id,{...pending,id,key:output,arrivedAt:now,collectAt:0,fromKey:key});
+        blobs.set(id,{...pending,id,key:output,arrivedAt:now,collectAt:0,
+          // Preserve the actual incoming belt for single-cell processors.
+          // Mega machines route via their physical exit port instead.
+          fromKey:megaProcessors.has(obj.type)?key:(pending.fromKey||null)});
         stats.produced++;occupied.add(output);changed=true;
       }
       // Drain at most one finished batch blob per conveyor movement step.
