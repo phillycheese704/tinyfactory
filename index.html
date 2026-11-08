@@ -252,6 +252,41 @@
     .factory-actions button{min-width:30px;height:33px;border:1.5px solid #292929;border-radius:7px;background:#fff;font:900 19px/1 sans-serif;cursor:pointer}
     .factory-actions button:disabled{opacity:.35;cursor:default}
     .factory-actions button[aria-pressed="true"]{background:#ffe19e}
+    .factory-actions #tutorialToggle{background:#e6f4ff;font-size:19px}
+    .factory-actions #tutorialToggle:hover{background:#cceaff}
+    /* Pip's guide lives outside the world, so nothing pans or zooms with it. */
+    .tutorial-modal{z-index:90;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+    .tutorial-card{width:min(650px,100%);max-height:calc(100dvh - 26px);overflow:auto;overscroll-behavior:contain;background:#fffdf6;border:3px solid var(--ink);border-radius:20px 18px 24px 19px;box-shadow:6px 7px 0 #292929;display:flex;flex-direction:column;gap:14px;padding:clamp(15px,3vw,25px);color:var(--ink)}
+    .tutorial-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .tutorial-kicker{font:900 12px/1.25 sans-serif;letter-spacing:.11em;color:#547497}
+    .tutorial-close{border:2px solid #9f5555;border-radius:9px;background:#fff4f4;color:#a32e30;font:900 22px/1 sans-serif;width:37px;height:37px;flex:0 0 auto;cursor:pointer}
+    .tutorial-intro{display:flex;gap:17px;align-items:center}
+    .tutorial-robot{flex:0 0 clamp(112px,24vw,165px);min-width:0;align-self:center;filter:drop-shadow(2px 5px 0 #b3c6d7);animation:pip-bob 3s ease-in-out infinite}
+    .tutorial-robot svg{display:block;width:100%;height:auto}
+    .tutorial-robot .pip-arm{transform-origin:121px 92px;animation:pip-wave 1.6s ease-in-out infinite}
+    @keyframes pip-bob{0%,100%{transform:translateY(1px)}50%{transform:translateY(-5px)}}
+    @keyframes pip-wave{0%,100%{transform:rotate(0deg)}45%{transform:rotate(-18deg)}}
+    .tutorial-copy{min-width:0;flex:1}
+    .tutorial-speaker{display:inline-block;border:1.5px solid #8ebada;border-radius:20px;background:#e6f5ff;padding:4px 10px;font:900 11px/1.3 sans-serif;color:#356b90;margin-bottom:8px}
+    .tutorial-copy h2{margin:0 0 9px;font:900 clamp(22px,3.8vw,30px)/1.12 sans-serif;letter-spacing:-.6px}
+    .tutorial-copy p{margin:0;font:700 15px/1.55 sans-serif;color:#41444c}
+    .tutorial-diagram{display:flex;align-items:center;justify-content:center;gap:8px;background:#ecf8ed;border:2px dashed #75b487;border-radius:12px;padding:11px;font:900 clamp(12px,2.7vw,16px)/1.35 sans-serif;text-align:center}
+    .tutorial-diagram[hidden]{display:none}
+    .tutorial-tip{border:1.5px solid #edcb87;border-radius:12px;background:#fff3d6;padding:10px 13px}
+    .tutorial-tip strong{display:block;font:900 11px/1.2 sans-serif;letter-spacing:.05em;color:#885716;margin-bottom:4px}
+    .tutorial-tip p{margin:0;font:700 13px/1.45 sans-serif}
+    .tutorial-progress{display:flex;align-items:center;gap:12px;font:800 12px sans-serif;color:#626a74}
+    .tutorial-progress-track{flex:1;height:9px;border:1px solid #aabccc;border-radius:20px;background:#ebf0f3;overflow:hidden}
+    .tutorial-progress-fill{display:block;height:100%;width:0;background:#67b5b6;border-radius:20px;transition:width .18s ease}
+    .tutorial-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+    .tutorial-actions button{min-height:40px;border:2px solid var(--ink);border-radius:10px;padding:8px 14px;background:#fff;cursor:pointer;font:900 13px/1.2 sans-serif}
+    .tutorial-actions button:focus-visible,.tutorial-close:focus-visible{outline:3px solid #1874a5;outline-offset:2px}
+    .tutorial-actions .tutorial-skip{margin-right:auto;border-color:transparent;background:transparent;color:#677381}
+    .tutorial-actions .tutorial-next{background:var(--yellow);box-shadow:2px 2px 0 var(--ink)}
+    .tutorial-actions button:disabled{opacity:.35;cursor:default}
+    @media(max-width:580px){.tutorial-card{gap:10px;padding:14px}.tutorial-intro{gap:10px}.tutorial-robot{flex-basis:90px}.tutorial-copy h2{font-size:22px}.tutorial-copy p{font-size:13px}.tutorial-actions button{padding:8px 11px;min-height:38px}}
+    @media(max-width:340px){.tutorial-intro{align-items:flex-start}.tutorial-robot{flex-basis:70px}.tutorial-actions .tutorial-skip{width:100%;margin:0}}
+    @media(prefers-reduced-motion:reduce){.tutorial-robot,.tutorial-robot .pip-arm{animation:none}.tutorial-progress-fill{transition:none}}
     .stats-config{width:min(680px,96vw);max-height:88dvh;overflow:auto}
     .dialog-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
     .small-close{border:2px solid #9d4848;border-radius:9px;background:#fff0f0;min-width:36px;height:36px;font:800 25px sans-serif;cursor:pointer}
@@ -660,6 +695,63 @@
     <button type="button" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo building action" disabled>↶</button>
     <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo building action" disabled>↷</button>
     <button type="button" id="pauseBtn" title="Pause factory (P)" aria-label="Pause simulation" aria-pressed="false">⏸</button>
+    <button type="button" id="tutorialToggle" title="Meet Pip, your robot guide" aria-label="Open robot tutorial" aria-haspopup="dialog" aria-controls="tutorialModal">🤖</button>
+  </div>
+  <div class="sorter-panel tutorial-modal" id="tutorialModal" role="dialog" aria-modal="true" aria-labelledby="tutorialHeading" aria-describedby="tutorialMessage" aria-hidden="true">
+    <section class="tutorial-card">
+      <div class="tutorial-top">
+        <span class="tutorial-kicker">✦ TINY FACTORY • ROBOT SCHOOL</span>
+        <button type="button" class="tutorial-close" id="tutorialClose" aria-label="Close robot tutorial">×</button>
+      </div>
+      <div class="tutorial-intro">
+        <div class="tutorial-robot" aria-hidden="true">
+          <svg viewBox="0 0 160 166" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M81 31V16" stroke="#292929" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="81" cy="12" r="9" fill="#FFCF68" stroke="#292929" stroke-width="4"/>
+            <path d="M28 113L19 127M132 113L142 127" stroke="#292929" stroke-width="8" stroke-linecap="round"/>
+            <path d="M48 133L43 151M112 133L117 151" stroke="#292929" stroke-width="8" stroke-linecap="round"/>
+            <path d="M33 60Q32 39 54 37H109Q132 38 130 60V110Q129 137 106 138H54Q31 136 31 111Z" fill="#9CD8F5" stroke="#292929" stroke-width="5"/>
+            <rect x="41" y="50" width="80" height="68" rx="19" fill="#F6FDFF" stroke="#292929" stroke-width="4"/>
+            <rect x="49" y="62" width="64" height="41" rx="15" fill="#D7F2FF"/>
+            <ellipse cx="66" cy="81" rx="6" ry="10" fill="#292929"/>
+            <ellipse cx="96" cy="81" rx="6" ry="10" fill="#292929"/>
+            <circle cx="62" cy="77" r="2" fill="white"/>
+            <circle cx="92" cy="77" r="2" fill="white"/>
+            <ellipse cx="54" cy="95" rx="7" ry="4" fill="#FF9CB3" opacity=".85"/>
+            <ellipse cx="108" cy="95" rx="7" ry="4" fill="#FF9CB3" opacity=".85"/>
+            <path d="M73 98Q81 107 89 98" stroke="#292929" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="80" cy="126" r="4" fill="#FFE28B" stroke="#292929" stroke-width="2"/>
+            <path d="M28 85Q15 78 12 92L15 105" fill="#9CD8F5" stroke="#292929" stroke-width="5" stroke-linecap="round"/>
+            <g class="pip-arm">
+              <path d="M131 85Q145 76 146 57" stroke="#292929" stroke-width="9" stroke-linecap="round"/>
+              <path d="M131 85Q145 76 146 57" stroke="#9CD8F5" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="146" cy="51" r="9" fill="#FFE28B" stroke="#292929" stroke-width="4"/>
+            </g>
+            <path d="M15 34l3-8 3 8 8 3-8 3-3 8-3-8-8-3z" fill="#FFCF68"/>
+            <path d="M142 26l2-5 2 5 5 2-5 2-2 5-2-5-5-2z" fill="#FF90BD"/>
+          </svg>
+        </div>
+        <div class="tutorial-copy" aria-live="polite">
+          <span class="tutorial-speaker">🤖 PIP • YOUR ROBOT BUDDY</span>
+          <h2 id="tutorialHeading">Hey, factory friend!</h2>
+          <p id="tutorialMessage">I'm Pip! Want to build your first little money-making machine line together?</p>
+        </div>
+      </div>
+      <div class="tutorial-diagram" id="tutorialDiagram" hidden>💧 Dropper　→　➡️ Conveyor　→　💰 Extractor</div>
+      <div class="tutorial-tip">
+        <strong>💡 PIP'S TIP</strong>
+        <p id="tutorialTip">This is your factory. We're going to make it awesome!</p>
+      </div>
+      <div class="tutorial-progress">
+        <span id="tutorialStepCount">Step 1 of 6</span>
+        <div class="tutorial-progress-track" aria-hidden="true"><span class="tutorial-progress-fill" id="tutorialProgressFill"></span></div>
+      </div>
+      <div class="tutorial-actions">
+        <button type="button" id="tutorialSkip" class="tutorial-skip">Skip for now</button>
+        <button type="button" id="tutorialPrev" disabled>← Back</button>
+        <button type="button" id="tutorialNext" class="tutorial-next">Next →</button>
+      </div>
+    </section>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="sorter-panel" id="statsPanel" role="dialog" aria-modal="true" aria-label="Factory information and lifetime statistics">
@@ -4025,6 +4117,97 @@ function renderMachineFrame(type,inside,classes=''){
     updateMoney();
     renderInventory();
     fitFactoryGrid();
+
+    // Pip the robot offers a short first-run tutorial, with an always-visible
+    // replay button. Never overwrite game saves or force existing players in.
+    const TUTORIAL_KEY='tiny-factory-pip-tutorial-v1';
+    const tutorialSteps=[
+      {title:'Hey, factory friend! 👋',
+        message:"I'm Pip, your little robot buddy! Let's build a tiny factory that makes money. Ready for a quick tour?",
+        tip:"You can skip this tour any time and bring me back with the 🤖 button."},
+      {title:'Meet the shop! 🛒',
+        message:'Tap the cart in the top-right corner. Buy a Dropper, a few Conveyors and an Extractor. The first of each starts FREE!',
+        tip:'Shop tabs sort machines by price, lowest first. Your next copy may cost more.'},
+      {title:'Fill your toolbelt 🧰',
+        message:'Bought machines go into your inventory along the bottom. Tap a hotbar item, then tap a free factory tile to place it. You can also drag items onto the grid.',
+        tip:'Tap the backpack to see extra items. Use the rotate tool if something faces the wrong way.'},
+      {title:'Build your first line! 🏗️',
+        message:'Place a Dropper, then a Conveyor to its right, then an Extractor to the right of that. Make sure the arrows lead toward the Extractor!',
+        tip:'Blobs only move along connected paths. A dead end can clog your factory.',
+        diagram:true},
+      {title:'Turn blobs into cash 💰',
+        message:'Tap your placed Dropper to release a blob. It travels across the Conveyor into the Extractor, which sells it and adds money to your balance!',
+        tip:'Later, a Turbine connected by Wire can power basic Droppers to produce automatically.'},
+      {title:'You are the factory boss! 🌟',
+        message:'Use your earnings to try faster conveyors, processors and power upgrades. Use the page arrows to grow, and the ⓘ button to check stats and bottlenecks.',
+        tip:"Beep-boop! I'm always here. Tap 🤖 in the controls whenever you want another tour."}
+    ];
+    const tutorialModal=$('tutorialModal');
+    let tutorialIndex=0;
+    function showTutorialStep(){
+      const step=tutorialSteps[tutorialIndex];
+      $('tutorialHeading').textContent=step.title;
+      $('tutorialMessage').textContent=step.message;
+      $('tutorialTip').textContent=step.tip;
+      $('tutorialDiagram').hidden=!step.diagram;
+      $('tutorialStepCount').textContent='Step '+(tutorialIndex+1)+' of '+tutorialSteps.length;
+      $('tutorialProgressFill').style.width=((tutorialIndex+1)/tutorialSteps.length*100)+'%';
+      $('tutorialPrev').disabled=tutorialIndex===0;
+      $('tutorialNext').textContent=tutorialIndex===tutorialSteps.length-1?'Let’s build! ✓':'Next →';
+    }
+    function closeRobotTutorial(){
+      tutorialModal.classList.remove('open');
+      tutorialModal.setAttribute('aria-hidden','true');
+      try{localStorage.setItem(TUTORIAL_KEY,'done');}catch{}
+      $('tutorialToggle').focus();
+    }
+    function openRobotTutorial(){
+      tutorialIndex=0;
+      showTutorialStep();
+      tutorialModal.classList.add('open');
+      tutorialModal.setAttribute('aria-hidden','false');
+      $('tutorialNext').focus();
+    }
+    $('tutorialToggle').addEventListener('click',openRobotTutorial);
+    $('tutorialClose').addEventListener('click',closeRobotTutorial);
+    $('tutorialSkip').addEventListener('click',closeRobotTutorial);
+    $('tutorialPrev').addEventListener('click',()=>{
+      if(tutorialIndex>0){tutorialIndex--;showTutorialStep();}
+    });
+    $('tutorialNext').addEventListener('click',()=>{
+      if(tutorialIndex===tutorialSteps.length-1)closeRobotTutorial();
+      else {tutorialIndex++;showTutorialStep();}
+    });
+    tutorialModal.addEventListener('click',event=>{
+      if(event.target===tutorialModal)closeRobotTutorial();
+    });
+    tutorialModal.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){
+        event.preventDefault();event.stopPropagation();closeRobotTutorial();return;
+      }
+      if(event.key==='ArrowRight'&&event.target?.tagName!=='TEXTAREA'){
+        event.preventDefault();$('tutorialNext').click();return;
+      }
+      if(event.key==='ArrowLeft'&&event.target?.tagName!=='TEXTAREA'){
+        event.preventDefault();$('tutorialPrev').click();return;
+      }
+      if(event.key==='Tab'){
+        const buttons=Array.from(tutorialModal.querySelectorAll('button:not(:disabled)'));
+        if(!buttons.length)return;
+        const current=buttons.indexOf(document.activeElement);
+        if(event.shiftKey&&current===0){
+          event.preventDefault();buttons[buttons.length-1].focus();
+        }else if(!event.shiftKey&&current===buttons.length-1){
+          event.preventDefault();buttons[0].focus();
+        }
+      }
+    });
+    let tutorialSeen=false,hasExistingFactory=false;
+    try{
+      tutorialSeen=localStorage.getItem(TUTORIAL_KEY)==='done';
+      hasExistingFactory=!!localStorage.getItem(SAVE_KEY);
+    }catch{}
+    if(!tutorialSeen&&!hasExistingFactory)openRobotTutorial();
 
     // On hosted HTTPS sites (including GitHub Pages), cache this self-contained
     // game so it can launch with no network after the initial online visit.
