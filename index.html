@@ -1106,9 +1106,15 @@
     const MOVE_MS = 250;
     // Gameplay timestamps stop while paused; resuming never catches up old costs.
     let pausedAt=null,pausedAccumulated=0;
-    function factoryNow(){return (pausedAt===null?performance.now():pausedAt)-pausedAccumulated;}
+    let simulationStepTime=null,sleepSkew=0;
+    let lastWallSample=Date.now(),lastPerfSample=performance.now();
+    function factoryNow(){
+      return simulationStepTime??((pausedAt===null?performance.now():pausedAt)-pausedAccumulated+sleepSkew);
+    }
     function setSimulationPaused(shouldPause){
       if((pausedAt!==null)===shouldPause)return;
+      // Keep paused intervals out of the catch-up clock, including device sleep.
+      lastWallSample=Date.now();lastPerfSample=performance.now();
       if(shouldPause)pausedAt=performance.now();
       else{pausedAccumulated+=performance.now()-pausedAt;pausedAt=null;}
       document.body.classList.toggle('simulation-paused',shouldPause);
@@ -4034,30 +4040,80 @@ function renderMachineFrame(type,inside,classes=''){
       }
       if(mustRender)renderGrid();
     }
+    // Browsers throttle/suspend setInterval in background tabs. Record the
+    // simulation time already processed and replay missed steps whenever a
+    // timer fires or the tab becomes visible. Never depend on timer frequency
+    // for actual factory production or earnings.
+    let simulatedThrough=factoryNow(),catchUpScheduled=false;
+    const CATCH_UP_BATCH=160;
     function tickFactory(){
-      if(pausedAt!==null)return;
-      const now=factoryNow();
-      if(lastStatsTick){
-        stats.playMs+=Math.max(0,Math.min(60000,now-lastStatsTick));
-        if(now-lastStatsSavedAt>=1000){lastStatsSavedAt=now;markDirty();}
+      if(pausedAt!==null){
+        lastWallSample=Date.now();lastPerfSample=performance.now();
+        return;
       }
-      lastStatsTick=now;
+      const wall=Date.now(),perf=performance.now();
+      const wallDelta=Math.max(0,wall-lastWallSample),perfDelta=Math.max(0,perf-lastPerfSample);
+      // Some devices suspend performance.now during sleep; use elapsed
+      // wall time to fill that gap, but never duplicate normal hidden time.
+      if(wallDelta-perfDelta>1500)sleepSkew+=Math.min(86400000,wallDelta-perfDelta);
+      lastWallSample=wall;lastPerfSample=perf;
+      const target=factoryNow();
+      if(target<=simulatedThrough)return;
+      const lag=target-simulatedThrough;
+      // Small steps preserve high-speed belts. For unusually long absences,
+      // slightly larger steps keep catch-up affordable without freezing UI.
+      const step=lag>3600000?125:lag>600000?75:lag>60000?50:25;
+      const count=Math.min(CATCH_UP_BATCH,Math.ceil(lag/step));
       const displayed=currentPage;
-      try {
-        for(let index=0;index<factoryPages.length;index++){
-          const page=factoryPages[index];
-          placed=page.placed;blobs=page.blobs;
-          renderCurrentPage=index===displayed;
-          tickPage(now,page);
+      const wasCatchUp=count>1;
+      let complete=false;
+      try{
+        for(let n=0;n<count;n++){
+          const at=Math.min(target,simulatedThrough+step);
+          if(at<=simulatedThrough)break;
+          const delta=at-simulatedThrough;
+          simulatedThrough=at;
+          simulationStepTime=at;
+          if(lastStatsTick){
+            stats.playMs+=Math.max(0,delta);
+            if(at-lastStatsSavedAt>=1000){lastStatsSavedAt=at;markDirty();}
+          }
+          lastStatsTick=at;
+          const isFinal=n===count-1 && at>=target-.01;
+          for(let index=0;index<factoryPages.length;index++){
+            const page=factoryPages[index];
+            placed=page.placed;blobs=page.blobs;
+            renderCurrentPage=isFinal&&document.visibilityState!=='hidden'&&index===displayed;
+            tickPage(at,page);
+          }
         }
+        complete=simulatedThrough>=target-.01;
       }finally{
+        simulationStepTime=null;
         placed=factoryPages[displayed].placed;
         blobs=factoryPages[displayed].blobs;
         renderCurrentPage=true;
-        refreshMachineActivity(now);
+        if(complete&&wasCatchUp&&document.visibilityState!=='hidden'){
+          renderGrid();renderBlobs();updateMoney();renderStats();
+        }
+        refreshMachineActivity(factoryNow());
+      }
+      if(!complete&&!catchUpScheduled){
+        catchUpScheduled=true;
+        setTimeout(()=>{
+          catchUpScheduled=false;
+          tickFactory();
+        },0);
       }
     }
     setInterval(tickFactory,25);
+    // A page returning from suspension catches up even if periodic timers
+    // were stopped. Keep game saves fresh before the tab is hidden.
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden')saveState();
+      else tickFactory();
+    });
+    window.addEventListener('focus',tickFactory);
     // Revert the indicator to a flat line when the last transaction ages out.
     setInterval(refreshMoneyTrend,1000);
 
