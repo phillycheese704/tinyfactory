@@ -463,6 +463,33 @@ function runSuite(gameSource){
     a.clock(1300);g.moveBlobs(1300);
     return legacy.key==='6,7'&&legacy.blockedSince===undefined;
   });
+  verify('Extractor frees its tile immediately after collecting a blob',()=>{
+    const a=boot(),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','Extractor');
+    const finished=g.newBlob('gold','6,6',1000);
+    finished.state='collecting';finished.collectAt=1500;
+    const waiting=g.newBlob('normal','6,5',1000);
+    g.blobs().set(finished.id,finished);g.blobs().set(waiting.id,waiting);
+    a.clock(1600);g.moveBlobs(1600);
+    return g.stats.sold===1&&g.blobs().size===1&&
+      waiting.key==='6,6'&&waiting.state==='collecting'&&
+      waiting.blockedSince===undefined;
+  });
+  verify('Saved self-originating clone automatically escapes after reload',()=>{
+    const store=new Map(),a=boot({storageMap:store}),g=a.game;
+    put(g,'6,5','Conveyor');put(g,'6,6','QuantumComputer');
+    put(g,'6,7','Conveyor');put(g,'6,8','Extractor');
+    const stuck=g.newBlob('gold','6,6',1000);
+    stuck.fromKey='6,6';stuck.blockedSince=1000;
+    g.blobs().set(stuck.id,stuck);
+    a.window.tinyFactoryTesting.addMoney('1');
+    g.saveState();
+    const reloaded=boot({storageMap:store});
+    const restored=[...reloaded.game.blobs().values()][0];
+    if(!restored||restored.fromKey!=='6,6')return false;
+    reloaded.clock(1300);reloaded.game.moveBlobs(1300);
+    return restored.key==='6,7'&&restored.blockedSince===undefined;
+  });
   verify('Singularity copies retain incoming belt and release onto conveyors',()=>{
     const a=boot(),g=a.game;
     put(g,'6,5','Conveyor');put(g,'6,6','Singularity');
