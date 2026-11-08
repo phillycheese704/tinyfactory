@@ -55,6 +55,38 @@ async function run(){
       }
       await page.goto(url,{waitUntil:'domcontentloaded'});
       await page.locator('#factoryGrid .grid-cell').first().waitFor();
+      // A new player meets Pip. Tutorial stays on top of the game without
+      // changing their factory, then remembers dismissal across reloads.
+      await page.locator('#tutorialModal.open').waitFor();
+      assert.match(await page.locator('#tutorialHeading').innerText(),/factory friend/i);
+      assert(await page.locator('.tutorial-robot svg').isVisible(),'Pip must be illustrated');
+      assert.equal(await page.locator('#tutorialStepCount').innerText(),'Step 1 of 6');
+      assert(await page.locator('#tutorialPrev').isDisabled(),'Back must start disabled');
+      await page.locator('#tutorialNext').click();
+      assert.equal(await page.locator('#tutorialStepCount').innerText(),'Step 2 of 6');
+      await page.locator('#tutorialPrev').click();
+      assert.equal(await page.locator('#tutorialStepCount').innerText(),'Step 1 of 6');
+      await page.screenshot({path:path.join(screenshotDir,
+        profile.name.replace(/\W+/g,'-')+'-pip-tutorial.png')});
+      await page.locator('#tutorialSkip').click();
+      assert(!await page.locator('#tutorialModal').isVisible(),'Skip should close the guide');
+      assert.equal(await page.evaluate(()=>localStorage.getItem('tiny-factory-pip-tutorial-v1')),'done');
+      await page.reload({waitUntil:'domcontentloaded'});
+      await page.locator('#factoryGrid .grid-cell').first().waitFor();
+      assert(!await page.locator('#tutorialModal').isVisible(),
+        'Tutorial must not reappear once dismissed');
+      await page.locator('#tutorialToggle').click();
+      assert(await page.locator('#tutorialModal').isVisible(),'Robot button must reopen Pip');
+      assert.equal(await page.locator('#tutorialStepCount').innerText(),'Step 1 of 6');
+      for(let i=0;i<3;i++)await page.locator('#tutorialNext').click();
+      assert(await page.locator('#tutorialDiagram').isVisible(),
+        'Building lesson should show the Dropper → Conveyor → Extractor diagram');
+      assert.match(await page.locator('#tutorialDiagram').innerText(),/Dropper/);
+      assert.match(await page.locator('#tutorialDiagram').innerText(),/Extractor/);
+      for(let i=0;i<3;i++)await page.locator('#tutorialNext').click();
+      assert(!await page.locator('#tutorialModal').isVisible(),'Finishing must close Pip');
+      assert.equal(await page.locator('#balanceAmount').innerText(),'$0',
+        'Tutorial must not modify game money');
       assert.equal(await page.locator('#shopItems .item').count(),42,
         'All 42 machine cards must exist');
       const width=await page.evaluate(()=>document.documentElement.scrollWidth);
